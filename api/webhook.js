@@ -156,6 +156,8 @@ function getDefaultChatConfig() {
       goodbyeEnabled: false,
       welcomeText: "Welcome {first} to {chatname}!",
       goodbyeText: "Goodbye {first}!",
+      welcomeMedia: null,
+      goodbyeMedia: null,
       cleanWelcome: false,
       lastWelcomeMsgId: null,
       lastWelcomeTs: 0,
@@ -174,6 +176,7 @@ function getDefaultChatConfig() {
       limit: 3,
       timeSeconds: 0,
       durationSeconds: 0,
+      clearedAt: 0,
     },
   };
 }
@@ -194,6 +197,27 @@ async function getChatConfig(chatId) {
 
 async function saveChatConfig(chatId, cfg) {
   await storeSet(`cfg:${chatId}`, cfg);
+}
+
+function extractMediaFromMessage(msg) {
+  if (!msg || typeof msg !== "object") return null;
+  if (msg.animation?.file_id) {
+    return { type: "animation", file_id: msg.animation.file_id };
+  }
+  if (msg.video?.file_id) {
+    return { type: "video", file_id: msg.video.file_id };
+  }
+  if (Array.isArray(msg.photo) && msg.photo.length > 0) {
+    const best = msg.photo[msg.photo.length - 1];
+    if (best?.file_id) return { type: "photo", file_id: best.file_id };
+  }
+  if (msg.sticker?.file_id) {
+    return { type: "sticker", file_id: msg.sticker.file_id };
+  }
+  if (msg.document?.file_id) {
+    return { type: "document", file_id: msg.document.file_id };
+  }
+  return null;
 }
 
 function parseBoolFlag(val) {
@@ -252,8 +276,11 @@ function applyFillings(text, user, chat, extra = {}) {
     .replace(/\{id\}/g, String(id))
     .replace(/\{mention\}/g, id ? `[${first}](tg://user?id=${id})` : first)
     .replace(/\{chatname\}/g, chatName);
+
   if (extra.rulesButton) {
-    out = out.replace(/\{rules\}/g, extra.rulesButton);
+    const label = extra.rulesButton;
+    const url = extra.rulesUrl;
+    out = out.replace(/\{rules\}/g, url ? `[${label}](${url})` : label);
   }
   return out;
 }
@@ -261,18 +288,24 @@ function applyFillings(text, user, chat, extra = {}) {
 function extractButtonsFromText(raw) {
   const buttons = [];
   const cleaned = raw.replace(
-    /\[([^\]]+)\]\((buttonurl|buttonalert):\/\/([^)]+)\)/g,
+    /\[([^\]]+)\]\((buttonurl|buttonalert|https?|tg):\/\/([^)]+)\)/g,
     (_, label, kind, target) => {
+      const cleanLabel = label.trim();
+      const t = target.trim();
+      if (kind === "buttonalert") {
+        buttons.push([{ text: cleanLabel, callback_data: `alert:${t.slice(0, 55)}` }]);
+        return "";
+      }
+      let url = "";
       if (kind === "buttonurl") {
-        const t = target.trim();
-        const url =
-          t.startsWith("http://") || t.startsWith("https://")
+        url =
+          t.startsWith("http://") || t.startsWith("https://") || t.startsWith("tg://")
             ? t
             : `https://${t.replace(/^\/+/, "")}`;
-        buttons.push([{ text: label.trim(), url }]);
       } else {
-        buttons.push([{ text: label.trim(), callback_data: `alert:${target.trim().slice(0, 55)}` }]);
+        url = `${kind}://${t}`;
       }
+      buttons.push([{ text: cleanLabel, url }]);
       return "";
     }
   );
@@ -280,6 +313,78 @@ function extractButtonsFromText(raw) {
     text: cleaned.trim(),
     replyMarkup: buttons.length ? { inline_keyboard: buttons } : undefined,
   };
+}
+
+async function sendGreetingPayload(token, chatId, cfg, kind, member, chat) {
+  const isWelcome = kind === "welcome";
+  const rawTemplate = isWelcome ? cfg.greetings.welcomeText : cfg.greetings.goodbyeText;
+  const media = isWelcome ? cfg.greetings.welcomeMedia : cfg.greetings.goodbyeMedia;
+
+  let rulesUrl = "";
+  if (/\{rules\}/i.test(rawTemplate || "")) {
+    const me = await safeTgApi(token, "getMe", {});
+    const botUname = me?.result?.username || "";
+    if (botUname) {
+      rulesUrl = `https://t.me/${botUname}?start=rules_${chatId}`;
+    }
+  }
+
+  const filled = applyFillings(rawTemplate, member, chat, {
+    rulesButton: cfg.rules.buttonText || "Rules",
+    rulesUrl,
+  });
+  const { text, replyMarkup } = extractButtonsFromText(filled);
+  const fallbackText = isWelcome
+    ? `Welcome ${member?.first_name || "User"}!`
+    : `Goodbye ${member?.first_name || "User"}!`;
+  const finalText = text || fallbackText;
+
+  if (media?.file_id) {
+    if (media.type === "animation") {
+      return await safeTgApi(token, "sendAnimation", {
+        chat_id: chatId,
+        animation: media.file_id,
+        caption: finalText,
+        reply_markup: replyMarkup,
+      });
+    }
+    if (media.type === "video") {
+      return await safeTgApi(token, "sendVideo", {
+        chat_id: chatId,
+        video: media.file_id,
+        caption: finalText,
+        reply_markup: replyMarkup,
+      });
+    }
+    if (media.type === "photo") {
+      return await safeTgApi(token, "sendPhoto", {
+        chat_id: chatId,
+        photo: media.file_id,
+        caption: finalText,
+        reply_markup: replyMarkup,
+      });
+    }
+    if (media.type === "sticker") {
+      const stickerSent = await safeTgApi(token, "sendSticker", {
+        chat_id: chatId,
+        sticker: media.file_id,
+      });
+      if (text) {
+        await safeSend(token, chatId, finalText, replyMarkup);
+      }
+      return stickerSent;
+    }
+    if (media.type === "document") {
+      return await safeTgApi(token, "sendDocument", {
+        chat_id: chatId,
+        document: media.file_id,
+        caption: finalText,
+        reply_markup: replyMarkup,
+      });
+    }
+  }
+
+  return await safeSend(token, chatId, finalText, replyMarkup);
 }
 
 async function handleBotMembershipChange(mcm, token, logChatId) {
@@ -345,10 +450,10 @@ function mainKeyboard() {
     inline_keyboard: [
       [
         { text: "Moderation & Pin", callback_data: "cc:mod" },
-        { text: "Filters & Notes", callback_data: "cc:fn" },
+        { text: "Filters, Notes & Greetings", callback_data: "cc:fn" },
       ],
       [
-        { text: "Warnings", callback_data: "cc:warn" },
+        { text: "Warnings & Locks", callback_data: "cc:warn" },
         { text: "Auto-Approve & Rights", callback_data: "cc:rights" },
       ],
     ],
@@ -370,7 +475,7 @@ async function handleCallback(cq, token) {
 
   const textMap = {
     "cc:mod": `${BOT_NAME} Moderation & Pin (Groups only):\n/pin, /permapin, /pinned, /unpin, /unpinall, /antichannelpin, /cleanlinked\n/ban, /dban, /sban, /tban, /unban, /mute, /dmute, /smute, /tmute, /unmute, /kick, /dkick, /skick, /kickme\n/purge, /spurge, /del, /purgefrom, /purgeto`,
-    "cc:fn": `${BOT_NAME} Filters & Notes (Groups only):\n/filter <trigger> <reply text>\n/filters, /stop <trigger>\n/save <name> <content>, /get <name> or #<name>, /notes, /clear <name>\n/rules, /setrules, /privaterules, /resetrules, /setrulesbutton, /resetrulesbutton`,
+    "cc:fn": `${BOT_NAME} Filters, Notes, Rules & Greetings:\n/filter <trigger> <reply text>, /filters, /stop <trigger>\n/save <name> <content>, /get <name> or #<name>, /notes, /clear <name>\n/rules, /setrules, /privaterules, /resetrules, /setrulesbutton, /resetrulesbutton\n/welcome, /goodbye, /setwelcome, /resetwelcome, /setgoodbye, /resetgoodbye, /cleanwelcome`,
     "cc:warn": `${BOT_NAME} Warnings & Protection:\n/warn, /dwarn, /swarn, /warns, /rmwarn, /resetwarn, /resetallwarns, /warnings, /warnmode, /warnlimit, /warntime\n/flood, /setflood, /setfloodtimer, /floodmode, /clearflood\n/addblocklist, /rmblocklist, /unblocklistall, /blocklist, /blocklistmode, /blocklistdelete, /setblocklistreason, /resetblocklistreason\n/lock, /unlock, /locks, /lockwarns, /locktypes, /allowlist, /rmallowlist, /rmallowlistall`,
     "cc:rights": `${BOT_NAME} Admin, Approval & Rights:\n/promote, /demote, /adminlist, /admincache, /anonadmin, /adminerror\n/approval, /approve, /unapprove, /approved, /unapproveall\n/cleancommand, /keepcommand, /cleancommandtypes`,
   };
@@ -623,6 +728,9 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
   const warnKey = `warns:${chatId}:${uid}`;
   let warns = (await storeGet(warnKey)) || [];
 
+  if (wCfg.clearedAt) {
+    warns = warns.filter((w) => w.at > wCfg.clearedAt);
+  }
   if (wCfg.timeSeconds > 0) {
     warns = warns.filter((w) => now - w.at < wCfg.timeSeconds * 1000);
   }
@@ -728,15 +836,7 @@ async function handleMessage(message, token) {
       });
     }
     for (const member of message.new_chat_members) {
-      const filled = applyFillings(cfg.greetings.welcomeText, member, message.chat, {
-        rulesButton: cfg.rules.buttonText,
-      });
-      const { text, replyMarkup } = extractButtonsFromText(filled);
-      const sent = await safeTgApi(token, "sendMessage", {
-        chat_id: chatId,
-        text: text || `Welcome ${member.first_name}!`,
-        reply_markup: replyMarkup,
-      });
+      const sent = await sendGreetingPayload(token, chatId, cfg, "welcome", member, message.chat);
       if (sent?.ok && sent.result?.message_id) {
         cfg.greetings.lastWelcomeMsgId = sent.result.message_id;
         cfg.greetings.lastWelcomeTs = Date.now();
@@ -747,11 +847,11 @@ async function handleMessage(message, token) {
   }
 
   if (message.left_chat_member && cfg.greetings.goodbyeEnabled) {
-    const filled = applyFillings(cfg.greetings.goodbyeText, message.left_chat_member, message.chat, {
-      rulesButton: cfg.rules.buttonText,
-    });
-    const { text, replyMarkup } = extractButtonsFromText(filled);
-    await safeSend(token, chatId, text || `Goodbye ${message.left_chat_member.first_name}!`, replyMarkup);
+    const memberCountRes = await safeTgApi(token, "getChatMemberCount", { chat_id: chatId });
+    const memberCount = typeof memberCountRes?.result === "number" ? memberCountRes.result : 0;
+    if (memberCount <= 50) {
+      await sendGreetingPayload(token, chatId, cfg, "goodbye", message.left_chat_member, message.chat);
+    }
     return;
   }
 
@@ -1585,36 +1685,100 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     return;
   }
 
-  if (cmd === "/welcome" || cmd === "/goodbye" || cmd === "/cleanwelcome") {
-    const flag = parseBoolFlag(cmdArgs[0]);
-    if (flag === null) {
-      await safeSend(token, chatId, `Usage: ${cmd} <yes/no/on/off>`);
+  if (cmd === "/welcome") {
+    if ((cmdArgs[0] || "").toLowerCase() === "noformat") {
+      const raw = cfg.greetings.welcomeText || "";
+      const mediaTag = cfg.greetings.welcomeMedia ? `\n[Media: ${cfg.greetings.welcomeMedia.type}]` : "";
+      await safeSend(token, chatId, `${raw}${mediaTag}` || "No welcome message set.");
       return;
     }
-    if (cmd === "/welcome") cfg.greetings.welcomeEnabled = flag;
-    if (cmd === "/goodbye") cfg.greetings.goodbyeEnabled = flag;
-    if (cmd === "/cleanwelcome") cfg.greetings.cleanWelcome = flag;
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /welcome <yes/no/on/off|noformat>");
+      return;
+    }
+    cfg.greetings.welcomeEnabled = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `${cmdName} set to ${flag ? "on" : "off"}.`);
+    await safeSend(token, chatId, `Welcome messages ${flag ? "enabled" : "disabled"}.`);
+    return;
+  }
+
+  if (cmd === "/goodbye") {
+    if ((cmdArgs[0] || "").toLowerCase() === "noformat") {
+      const raw = cfg.greetings.goodbyeText || "";
+      const mediaTag = cfg.greetings.goodbyeMedia ? `\n[Media: ${cfg.greetings.goodbyeMedia.type}]` : "";
+      await safeSend(token, chatId, `${raw}${mediaTag}` || "No goodbye message set.");
+      return;
+    }
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /goodbye <yes/no/on/off|noformat>");
+      return;
+    }
+    cfg.greetings.goodbyeEnabled = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Goodbye messages ${flag ? "enabled" : "disabled"}.`);
+    return;
+  }
+
+  if (cmd === "/cleanwelcome") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /cleanwelcome <yes/no/on/off>");
+      return;
+    }
+    cfg.greetings.cleanWelcome = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Clean welcome set to ${flag ? "on" : "off"}.`);
     return;
   }
 
   if (cmd === "/setwelcome" || cmd === "/setgoodbye") {
-    if (!cmdArgsStr) {
-      await safeSend(token, chatId, `Usage: ${cmd} <text>`);
+    const isWel = cmd === "/setwelcome";
+    const repliedMedia = extractMediaFromMessage(message.reply_to_message);
+    const directMedia = extractMediaFromMessage(message);
+    const pickedMedia = repliedMedia || directMedia;
+    const replyCaption =
+      typeof message.reply_to_message?.caption === "string"
+        ? message.reply_to_message.caption.trim()
+        : typeof message.reply_to_message?.text === "string"
+          ? message.reply_to_message.text.trim()
+          : "";
+    const nextText = cmdArgsStr || replyCaption || (pickedMedia ? "" : null);
+
+    if (nextText === null && !pickedMedia) {
+      await safeSend(token, chatId, `Usage: ${cmd} <text> (or reply to a photo/GIF/video with ${cmd})`);
       return;
     }
-    if (cmd === "/setwelcome") cfg.greetings.welcomeText = cmdArgsStr;
-    else cfg.greetings.goodbyeText = cmdArgsStr;
+
+    if (isWel) {
+      if (nextText !== null) cfg.greetings.welcomeText = nextText;
+      if (pickedMedia) cfg.greetings.welcomeMedia = pickedMedia;
+      else if (cmdArgsStr) cfg.greetings.welcomeMedia = null;
+    } else {
+      if (nextText !== null) cfg.greetings.goodbyeText = nextText;
+      if (pickedMedia) cfg.greetings.goodbyeMedia = pickedMedia;
+      else if (cmdArgsStr) cfg.greetings.goodbyeMedia = null;
+    }
+
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `${cmd === "/setwelcome" ? "Welcome" : "Goodbye"} message updated.`);
+    await safeSend(
+      token,
+      chatId,
+      `${isWel ? "Welcome" : "Goodbye"} message updated${pickedMedia ? ` with ${pickedMedia.type}` : ""}.`
+    );
     return;
   }
 
   if (cmd === "/resetwelcome" || cmd === "/resetgoodbye") {
     const def = getDefaultChatConfig().greetings;
-    if (cmd === "/resetwelcome") cfg.greetings.welcomeText = def.welcomeText;
-    else cfg.greetings.goodbyeText = def.goodbyeText;
+    if (cmd === "/resetwelcome") {
+      cfg.greetings.welcomeText = def.welcomeText;
+      cfg.greetings.welcomeMedia = null;
+    } else {
+      cfg.greetings.goodbyeText = def.goodbyeText;
+      cfg.greetings.goodbyeMedia = null;
+    }
     await saveChatConfig(chatId, cfg);
     await safeSend(token, chatId, `${cmd === "/resetwelcome" ? "Welcome" : "Goodbye"} message reset.`);
     return;
@@ -1898,7 +2062,8 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   }
 
   if (cmd === "/resetallwarns") {
-    await storeSet(`cfg:${chatId}`, { ...cfg, warnings: { ...cfg.warnings, clearedAt: Date.now() } });
+    cfg.warnings.clearedAt = Date.now();
+    await saveChatConfig(chatId, cfg);
     await safeSend(token, chatId, "All warnings cleared.");
     return;
   }
