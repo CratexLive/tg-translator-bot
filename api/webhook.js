@@ -27,6 +27,130 @@ const ALLOWLISTABLE_LOCKS = new Set([
   "stickerpremium", "url"
 ]);
 
+const HELP_CATEGORIES = {
+  "cc:h:admin": {
+    title: "Admin & Approval",
+    body: [
+      "<b>Admin & Approval Commands</b>",
+      "",
+      "<b>Admin Management:</b>",
+      "• /promote [@user|id|reply] — Promote a user to administrator.",
+      "• /demote [@user|id|reply] — Demote an administrator.",
+      "• /adminlist — List all chat administrators and titles.",
+      "• /admincache — Force refresh cached chat admins.",
+      "• /anonadmin &lt;yes/no/on/off&gt; — Allow anonymous admins to bypass checks.",
+      "• /adminerror &lt;yes/no/on/off&gt; — Toggle non-admin warning replies.",
+      "",
+      "<b>User Approvals:</b>",
+      "• /approval [@user|id|reply] — Check approval status.",
+      "• /approve [@user|id|reply] — Exempt user from locks, blocklists, and flood.",
+      "• /unapprove [@user|id|reply] — Revoke approval exemption.",
+      "• /approved — List approved user IDs.",
+      "• /unapproveall — Revoke approval from all users."
+    ].join("\n")
+  },
+  "cc:h:mod": {
+    title: "Bans, Mutes & Kicks",
+    body: [
+      "<b>Bans, Mutes & Kicks Commands</b>",
+      "",
+      "<b>Ban Actions:</b>",
+      "• /ban [@user|id|reply] [reason] — Permanently ban a user.",
+      "• /dban [reason] — Delete replied message and ban sender.",
+      "• /sban [reason] — Silently ban (deletes command/replied message).",
+      "• /tban [@user|id|reply] &lt;time&gt; [reason] — Temporarily ban (s/m/h/d/w).",
+      "• /unban [@user|id|reply] — Unban a restricted/banned user.",
+      "",
+      "<b>Mute & Kick Actions:</b>",
+      "• /mute [@user|id|reply] [reason] — Mute user in chat.",
+      "• /dmute [reason] — Delete replied message and mute sender.",
+      "• /smute [reason] — Silently mute user.",
+      "• /tmute [@user|id|reply] &lt;time&gt; [reason] — Temporarily mute user.",
+      "• /unmute [@user|id|reply] — Restore user send permissions.",
+      "• /kick [@user|id|reply] [reason] — Kick user from group.",
+      "• /dkick [reason] — Delete replied message and kick sender.",
+      "• /skick [reason] — Silently kick user.",
+      "• /kickme — Self-kick from the group."
+    ].join("\n")
+  },
+  "cc:h:prot": {
+    title: "Locks, Flood & Blocklists",
+    body: [
+      "<b>Locks, Antiflood & Blocklists</b>",
+      "",
+      "<b>Content Locks (51 Types):</b>",
+      "• /lock &lt;type(s)&gt; [### reason {action}] — Lock content or set custom rule.",
+      "• /unlock &lt;type(s)&gt; — Unlock specified content types.",
+      "• /locks [list] — View active locks or full lock summary.",
+      "• /locktypes — List all 51 supported lock types.",
+      "• /lockwarns &lt;yes/no/on/off&gt; — Warn users on locked items.",
+      "• /allowlist [item|emojipack:&lt;&gt;] — Allowlist channels/links/packs.",
+      "• /rmallowlist &lt;item&gt; — Remove item from allowlist.",
+      "• /rmallowlistall — Clear all allowlisted items.",
+      "",
+      "<b>Antiflood & Blocklists:</b>",
+      "• /flood — View current flood settings.",
+      "• /setflood &lt;number/off&gt; — Set consecutive message flood limit.",
+      "• /setfloodtimer &lt;count&gt; &lt;time|off&gt; — Set timed flood rule.",
+      "• /floodmode &lt;action&gt; [duration] — Set flood action (ban/mute/kick/tban/tmute).",
+      "• /clearflood &lt;yes/no/on/off&gt; — Delete flooding messages.",
+      "• /addblocklist &lt;trigger&gt; [reason] — Add word/wildcard/quoted blocklist.",
+      "• /rmblocklist &lt;trigger&gt; — Remove a blocklist trigger.",
+      "• /unblocklistall — Clear all blocklists (Creator only).",
+      "• /blocklist — View blocklist triggers and settings.",
+      "• /blocklistmode &lt;mode&gt; — Set action (nothing/ban/mute/kick/warn/tban/tmute).",
+      "• /blocklistdelete &lt;yes/no/on/off&gt; — Toggle deleting matched messages.",
+      "• /setblocklistreason &lt;text&gt; &amp; /resetblocklistreason — Manage default reason."
+    ].join("\n")
+  },
+  "cc:h:fnr": {
+    title: "Filters, Notes & Rules",
+    body: [
+      "<b>Filters, Notes & Rules Commands</b>",
+      "",
+      "<b>Filters & Notes:</b>",
+      "• /filter &lt;trigger&gt; &lt;reply&gt; — Save keyword, exact:, prefix:, or (multi) filter.",
+      "• /filters — List all active chat filters.",
+      "• /stop &lt;trigger&gt; — Remove a saved filter.",
+      "• /save &lt;name&gt; &lt;content&gt; — Save a reusable chat note.",
+      "• /get &lt;name&gt; [noformat] or #&lt;name&gt; — Retrieve a saved note.",
+      "• /notes — List all saved notes.",
+      "• /clear &lt;name&gt; — Delete a saved note.",
+      "",
+      "<b>Chat Rules:</b>",
+      "• /rules [noformat] — View group rules (or raw text).",
+      "• /setrules &lt;text&gt; — Set group rules with fillings/buttons.",
+      "• /privaterules &lt;yes/no/on/off&gt; — Send rules via DM button.",
+      "• /resetrules — Clear group rules.",
+      "• /setrulesbutton &lt;label&gt; &amp; /resetrulesbutton — Customize {rules} button."
+    ].join("\n")
+  },
+  "cc:h:gppw": {
+    title: "Greetings, Pin, Purges & Warns",
+    body: [
+      "<b>Greetings, Pin, Purges, Warns & CleanCmd</b>",
+      "",
+      "<b>Greetings & Pin:</b>",
+      "• /welcome &lt;yes/no/on/off|noformat&gt; &amp; /setwelcome [text|reply media]",
+      "• /resetwelcome &amp; /cleanwelcome &lt;yes/no/on/off&gt;",
+      "• /goodbye &lt;yes/no/on/off|noformat&gt; &amp; /setgoodbye [text|reply media]",
+      "• /resetgoodbye — Reset goodbye message and media.",
+      "• /pinned — Jump to current pinned message.",
+      "• /pin [loud|notify] — Pin replied message.",
+      "• /permapin &lt;text&gt; — Send and pin a formatted message.",
+      "• /unpin [reply] &amp; /unpinall — Unpin message(s).",
+      "• /antichannelpin &lt;yes/no/on/off&gt; &amp; /cleanlinked &lt;yes/no/on/off&gt;",
+      "",
+      "<b>Purges, Warnings & Clean Commands:</b>",
+      "• /purge [X], /spurge [X], /del, /purgefrom, /purgeto — Bulk/message cleanup.",
+      "• /warn, /dwarn, /swarn [reason] — Issue standard, delete, or silent warning.",
+      "• /warns, /rmwarn, /resetwarn, /resetallwarns — Manage user warnings.",
+      "• /warnings, /warnmode, /warnlimit, /warntime — Configure warning rules.",
+      "• /cleancommand, /keepcommand, /cleancommandtypes — Auto-delete commands."
+    ].join("\n")
+  }
+};
+
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") {
@@ -197,6 +321,57 @@ async function getChatConfig(chatId) {
 
 async function saveChatConfig(chatId, cfg) {
   await storeSet(`cfg:${chatId}`, cfg);
+}
+
+function buildStartIntro(botUsername = "") {
+  const addLink = botUsername
+    ? `https://t.me/${botUsername}?startgroup=true`
+    : "https://t.me/";
+
+  return {
+    text: [
+      `<b>${BOT_NAME} — Group Management & Moderation Suite</b>`,
+      "",
+      "Built for high-activity communities, match rooms, and moderated groups. Configure granular controls with persistent storage and instant webhook execution.",
+      "",
+      "<b>Core Capabilities</b>",
+      "• <b>Access & Admin Controls:</b> Admin promotion/demotion, admin cache, anonymous admin bypass, and user approval exemptions.",
+      "• <b>Enforcement & Moderation:</b> Permanent/timed bans, mutes, kicks, silent/delete variants, self-kick, and configurable warnings.",
+      "• <b>Content Protection:</b> 51 granular lock types with allowlists, custom actions/reasons, antiflood limits, and wildcard blocklists.",
+      "• <b>Automation & Engagement:</b> Custom welcomes/goodbyes with media, fillings, and buttons, pin tools, purges, rules, filters, notes, and join-request auto-approval.",
+      "",
+      "Tap <b>Help & Commands</b> below to browse detailed command categories."
+    ].join("\n"),
+    replyMarkup: {
+      inline_keyboard: [
+        [
+          { text: "Help & Commands", callback_data: "cc:help_menu" },
+          { text: "Add to Group", url: addLink }
+        ]
+      ]
+    }
+  };
+}
+
+function buildHelpMenuKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        { text: "Admin & Approval", callback_data: "cc:h:admin" },
+        { text: "Bans, Mutes & Kicks", callback_data: "cc:h:mod" }
+      ],
+      [
+        { text: "Locks, Flood & Blocklists", callback_data: "cc:h:prot" },
+        { text: "Filters, Notes & Rules", callback_data: "cc:h:fnr" }
+      ],
+      [
+        { text: "Greetings, Pin, Purges & Warns", callback_data: "cc:h:gppw" }
+      ],
+      [
+        { text: "Back to Overview", callback_data: "cc:intro" }
+      ]
+    ]
+  };
 }
 
 function extractMediaFromMessage(msg) {
@@ -445,23 +620,9 @@ async function handleJoinRequest(joinReq, token, logChatId) {
   }
 }
 
-function mainKeyboard() {
-  return {
-    inline_keyboard: [
-      [
-        { text: "Moderation & Pin", callback_data: "cc:mod" },
-        { text: "Filters, Notes & Greetings", callback_data: "cc:fn" },
-      ],
-      [
-        { text: "Warnings & Locks", callback_data: "cc:warn" },
-        { text: "Auto-Approve & Rights", callback_data: "cc:rights" },
-      ],
-    ],
-  };
-}
-
 async function handleCallback(cq, token) {
   const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
   const data = cq.data || "";
 
   if (data.startsWith("alert:")) {
@@ -473,16 +634,68 @@ async function handleCallback(cq, token) {
     return;
   }
 
-  const textMap = {
-    "cc:mod": `${BOT_NAME} Moderation & Pin (Groups only):\n/pin, /permapin, /pinned, /unpin, /unpinall, /antichannelpin, /cleanlinked\n/ban, /dban, /sban, /tban, /unban, /mute, /dmute, /smute, /tmute, /unmute, /kick, /dkick, /skick, /kickme\n/purge, /spurge, /del, /purgefrom, /purgeto`,
-    "cc:fn": `${BOT_NAME} Filters, Notes, Rules & Greetings:\n/filter <trigger> <reply text>, /filters, /stop <trigger>\n/save <name> <content>, /get <name> or #<name>, /notes, /clear <name>\n/rules, /setrules, /privaterules, /resetrules, /setrulesbutton, /resetrulesbutton\n/welcome, /goodbye, /setwelcome, /resetwelcome, /setgoodbye, /resetgoodbye, /cleanwelcome`,
-    "cc:warn": `${BOT_NAME} Warnings & Protection:\n/warn, /dwarn, /swarn, /warns, /rmwarn, /resetwarn, /resetallwarns, /warnings, /warnmode, /warnlimit, /warntime\n/flood, /setflood, /setfloodtimer, /floodmode, /clearflood\n/addblocklist, /rmblocklist, /unblocklistall, /blocklist, /blocklistmode, /blocklistdelete, /setblocklistreason, /resetblocklistreason\n/lock, /unlock, /locks, /lockwarns, /locktypes, /allowlist, /rmallowlist, /rmallowlistall`,
-    "cc:rights": `${BOT_NAME} Admin, Approval & Rights:\n/promote, /demote, /adminlist, /admincache, /anonadmin, /adminerror\n/approval, /approve, /unapprove, /approved, /unapproveall\n/cleancommand, /keepcommand, /cleancommandtypes`,
-  };
-
   await safeTgApi(token, "answerCallbackQuery", { callback_query_id: cq.id });
-  if (chatId && textMap[data]) {
-    await safeSend(token, chatId, textMap[data]);
+
+  if (!chatId) return;
+
+  if (data === "cc:help_menu") {
+    const menuText = [
+      `<b>${BOT_NAME} Command Reference</b>`,
+      "",
+      "Select a category below to view detailed commands and syntax:"
+    ].join("\n");
+    if (messageId) {
+      await safeTgApi(token, "editMessageText", {
+        chat_id: chatId,
+        message_id: messageId,
+        text: menuText,
+        parse_mode: "HTML",
+        reply_markup: buildHelpMenuKeyboard(),
+      });
+    } else {
+      await safeSend(token, chatId, menuText, buildHelpMenuKeyboard(), undefined, false, "HTML");
+    }
+    return;
+  }
+
+  if (data === "cc:intro") {
+    const me = await safeTgApi(token, "getMe", {});
+    const intro = buildStartIntro(me?.result?.username || "");
+    if (messageId) {
+      await safeTgApi(token, "editMessageText", {
+        chat_id: chatId,
+        message_id: messageId,
+        text: intro.text,
+        parse_mode: "HTML",
+        reply_markup: intro.replyMarkup,
+      });
+    } else {
+      await safeSend(token, chatId, intro.text, intro.replyMarkup, undefined, false, "HTML");
+    }
+    return;
+  }
+
+  if (HELP_CATEGORIES[data]) {
+    const cat = HELP_CATEGORIES[data];
+    const backMarkup = {
+      inline_keyboard: [
+        [
+          { text: "All Categories", callback_data: "cc:help_menu" },
+          { text: "Overview", callback_data: "cc:intro" }
+        ]
+      ]
+    };
+    if (messageId) {
+      await safeTgApi(token, "editMessageText", {
+        chat_id: chatId,
+        message_id: messageId,
+        text: cat.body,
+        parse_mode: "HTML",
+        reply_markup: backMarkup,
+      });
+    } else {
+      await safeSend(token, chatId, cat.body, backMarkup, undefined, false, "HTML");
+    }
   }
 }
 
@@ -796,11 +1009,21 @@ async function handleMessage(message, token) {
         );
         return;
       }
+      const me = await safeTgApi(token, "getMe", {});
+      const intro = buildStartIntro(me?.result?.username || "");
+      await safeSend(token, chatId, intro.text, intro.replyMarkup, undefined, false, "HTML");
+      return;
+    }
+
+    if (rawText.startsWith("/help")) {
       await safeSend(
         token,
         chatId,
-        `${BOT_NAME} is ready. Group moderation, warnings, filters, notes, locks, blocklists, antiflood, rules, greetings, pin, purges, and join-request auto-approve are active.`,
-        mainKeyboard()
+        `<b>${BOT_NAME} Command Reference</b>\n\nSelect a category below to view detailed commands and syntax:`,
+        buildHelpMenuKeyboard(),
+        undefined,
+        false,
+        "HTML"
       );
       return;
     }
@@ -813,15 +1036,6 @@ async function handleMessage(message, token) {
         `Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}`
       );
       return;
-    }
-
-    if (rawText.startsWith("/help")) {
-      await safeSend(
-        token,
-        chatId,
-        `${BOT_NAME} is ready. Use the menu below or add me to a group.`,
-        mainKeyboard()
-      );
     }
     return;
   }
@@ -998,12 +1212,35 @@ async function handleMessage(message, token) {
     floodState.set(`${chatId}:${senderId}`, { count: 0, ts: [] });
   }
 
-  if (cmd === "/start" || cmd === "/help") {
+  if (cmd === "/start") {
+    const parts = rawText.split(/\s+/);
+    if (parts[1] && parts[1].startsWith("rules_")) {
+      const targetChatId = parts[1].slice(6);
+      const targetCfg = await getChatConfig(targetChatId);
+      await safeSend(
+        token,
+        chatId,
+        targetCfg.rules.text
+          ? applyFillings(targetCfg.rules.text, sender, { title: "Group" })
+          : "No rules set for this chat."
+      );
+      return;
+    }
+    const me = await safeTgApi(token, "getMe", {});
+    const intro = buildStartIntro(me?.result?.username || "");
+    await safeSend(token, chatId, intro.text, intro.replyMarkup, undefined, false, "HTML");
+    return;
+  }
+
+  if (cmd === "/help") {
     await safeSend(
       token,
       chatId,
-      `${BOT_NAME} is ready. Group moderation, warnings, filters, notes, locks, blocklists, antiflood, rules, greetings, pin, purges, and join-request auto-approve are active.`,
-      mainKeyboard()
+      `<b>${BOT_NAME} Command Reference</b>\n\nSelect a category below to view detailed commands and syntax:`,
+      buildHelpMenuKeyboard(),
+      undefined,
+      false,
+      "HTML"
     );
     return;
   }
@@ -1747,7 +1984,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const nextText = cmdArgsStr || replyCaption || (pickedMedia ? "" : null);
 
     if (nextText === null && !pickedMedia) {
-      await safeSend(token, chatId, `Usage: ${cmd} <text> (or reply to a photo/GIF/video with ${cmd})`);
+      await safeSend(token, chatId, `Usage: ${cmd} <text> (or reply to a photo/GIF/video/sticker with ${cmd})`);
       return;
     }
 
@@ -2341,9 +2578,10 @@ async function isChatAdmin(token, chatId, userId, senderChat = null, cfg = null)
   }
 }
 
-async function safeSend(token, chatId, text, replyMarkup, replyToMessageId, protectContent = false) {
+async function safeSend(token, chatId, text, replyMarkup, replyToMessageId, protectContent = false, parseMode = undefined) {
   try {
     const payload = { chat_id: chatId, text };
+    if (parseMode) payload.parse_mode = parseMode;
     if (replyMarkup) payload.reply_markup = replyMarkup;
     if (replyToMessageId) payload.reply_to_message_id = replyToMessageId;
     if (protectContent) payload.protect_content = true;
