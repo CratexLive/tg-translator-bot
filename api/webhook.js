@@ -33,7 +33,7 @@ const HELP_CATEGORIES = {
   "cc:c:admin": {
     title: "Admin",
     body: [
-      "<b>🛡️ Admin Management</b>",
+      "<b>🛡️ Admin Management &amp; Rankings</b>",
       "──────────────────────",
       "• <b>/promote</b> [reply | @user | ID] — Promote a member to admin.",
       "• <b>/demote</b> [reply | @user | ID] — Demote an admin to member.",
@@ -42,11 +42,28 @@ const HELP_CATEGORIES = {
       "• <b>/admincache</b> — Refresh cached admin list.",
       "• <b>/anonadmin</b> &lt;on|off&gt; — Bypass checks for anonymous admins.",
       "• <b>/adminerror</b> &lt;on|off&gt; — Show or hide non-admin notices.",
-      "• <b>/modstats</b> [reply | @user | ID] — View admin moderation counts.",
-      "• <b>/resetmodstats</b> — Reset admin moderation stats.",
+      "• <b>/adminrank</b> — View leaderboard of most active admins.",
+      "• <b>/modstats</b> [reply | @user | ID] — View detailed admin activity &amp; mod counts.",
+      "• <b>/resetmodstats</b> — Reset admin activity &amp; moderation rankings.",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/promote @player10</code> • <code>/modstats</code>"
+      "<code>/adminrank</code> • <code>/modstats @admin</code>"
+    ].join("\n")
+  },
+  "cc:c:karma": {
+    title: "Reputation & Karma",
+    body: [
+      "<b>⭐ Member Karma &amp; Reputation</b>",
+      "──────────────────────",
+      "• Reply to any member with <b>thanks</b>, <b>thank you</b>, <b>thx</b>, <b>ty</b>, or <b>+1</b> to award +1 Karma point.",
+      "• <b>/karma</b> [reply | @user | ID] — Check a member's karma points &amp; rank.",
+      "• <b>/topkarma</b> — Display the top 10 most helpful members in the chat.",
+      "• <b>/karmaenable</b> &lt;on|off&gt; — Enable or disable karma points in this group.",
+      "• <b>/setkarma</b> [reply | @user | ID] &lt;number&gt; — Set a member's karma score (admin).",
+      "• <b>/resetkarma</b> — Clear all karma points in the group (admin).",
+      "",
+      "<b>💡 Examples:</b>",
+      "<code>/karma</code> • <code>/topkarma</code> • <code>/karmaenable on</code>"
     ].join("\n")
   },
   "cc:c:approval": {
@@ -61,7 +78,7 @@ const HELP_CATEGORIES = {
       "• <b>/unapproveall</b> — Clear all approved users.",
       "• <b>/watchlist</b> [reply | @user | ID] &lt;note&gt; — Add staff note on user.",
       "• <b>/unwatchlist</b> [reply | @user | ID] — Remove user watchlist note.",
-      "• <b>/checkuser</b> [reply | @user | ID] — Inspect user status, warns &amp; watchlist.",
+      "• <b>/checkuser</b> [reply | @user | ID] — Inspect user status, warns, karma &amp; watchlist.",
       "",
       "<b>💡 Examples:</b>",
       "<code>/approve @trusted_user</code> • <code>/watchlist @user Link spam watch</code>"
@@ -337,7 +354,7 @@ export default async function handler(req, res) {
 
     const message = update.message || update.edited_message;
     if (message?.chat?.id) {
-      await handleMessage(message, token, logChatId);
+      await handleMessage(message, token, logChatId, Boolean(update.edited_message));
     }
 
     return res.status(200).json({ ok: true });
@@ -397,10 +414,12 @@ function getDefaultChatConfig() {
     adminError: true,
     reportsEnabled: true,
     cleanService: false,
+    karmaEnabled: true,
     disabledCommands: [],
     approvedUsers: [],
     watchlist: {},
     modStats: {},
+    karma: {},
     flood: {
       limit: 0,
       timerCount: 0,
@@ -484,6 +503,7 @@ async function getChatConfig(chatId) {
     warnings: { ...base.warnings, ...(existing.warnings || {}) },
     watchlist: { ...(existing.watchlist || {}) },
     modStats: { ...(existing.modStats || {}) },
+    karma: { ...(existing.karma || {}) },
     approvedUsers: Array.isArray(existing.approvedUsers) ? existing.approvedUsers : [],
     disabledCommands: Array.isArray(existing.disabledCommands) ? existing.disabledCommands : [],
   };
@@ -493,14 +513,69 @@ async function saveChatConfig(chatId, cfg) {
   await storeSet(`cfg:${chatId}`, cfg);
 }
 
-async function recordModStat(chatId, actorId, actionKey) {
-  if (!actorId || !actionKey) return;
+function getUserDisplayLabel(userObj, fallbackId = "") {
+  if (!userObj) return String(fallbackId || "User");
+  if (userObj.username) return `@${userObj.username}`;
+  const full = `${userObj.first_name || ""}${userObj.last_name ? ` ${userObj.last_name}` : ""}`.trim();
+  return full || String(userObj.id || fallbackId || "User");
+}
+
+function computeAdminScore(st) {
+  if (!st) return 0;
+  const msgs = st.messages || 0;
+  const actions = (st.ban || 0) + (st.tban || 0) + (st.mute || 0) + (st.tmute || 0) + (st.kick || 0) + (st.warn || 0);
+  return msgs + actions * 5;
+}
+
+function getAdminRankBadge(score) {
+  if (score >= 500) return "Legend";
+  if (score >= 250) return "Commander";
+  if (score >= 100) return "Guardian";
+  if (score >= 30) return "Sentinel";
+  return "Scout";
+}
+
+function getKarmaRankBadge(points) {
+  if (points >= 100) return "Community Pillar";
+  if (points >= 50) return "Top Helper";
+  if (points >= 20) return "Trusted Member";
+  if (points >= 5) return "Contributor";
+  return "Member";
+}
+
+async function recordAdminActivity(chatId, userObj, actionKey = null) {
+  if (!userObj?.id) return;
   const cfg = await getChatConfig(chatId);
-  const k = String(actorId);
-  const cur = cfg.modStats[k] || { ban: 0, tban: 0, mute: 0, tmute: 0, kick: 0, warn: 0 };
-  cur[actionKey] = (cur[actionKey] || 0) + 1;
+  const k = String(userObj.id);
+  const cur = cfg.modStats[k] || {
+    name: getUserDisplayLabel(userObj, k),
+    messages: 0,
+    ban: 0,
+    tban: 0,
+    mute: 0,
+    tmute: 0,
+    kick: 0,
+    warn: 0,
+    lastActive: 0,
+  };
+  cur.name = getUserDisplayLabel(userObj, k);
+  cur.lastActive = Date.now();
+  if (actionKey) {
+    cur[actionKey] = (cur[actionKey] || 0) + 1;
+  } else {
+    cur.messages = (cur.messages || 0) + 1;
+  }
   cfg.modStats[k] = cur;
   await saveChatConfig(chatId, cfg);
+}
+
+function isThankYouMessage(text) {
+  if (!text || text.startsWith("/")) return false;
+  const cleaned = text.trim();
+  if (cleaned.length > 120) return false;
+  return /^(?:thanks?(?:\s+(?:a\s+lot|so\s+much|much|bro|bhai|mate|man|buddy|sir|ji|everyone))?|thank\s*(?:u|you)(?:\s+(?:so\s+much|a\s+lot|bro|bhai|mate|man|sir|ji))?|thx|ty|tysm|shukriya|dhanyawad|\+1)\b[!.,?\s]*$/i.test(
+    cleaned
+  );
 }
 
 async function sendAuditLog(token, logChatId, text) {
@@ -517,11 +592,11 @@ function buildStartIntro(botUsername = "") {
     text: [
       `<b>✨ ${BOT_NAME} — Moderation &amp; Community Suite</b>`,
       "──────────────────────",
-      "Fast, reliable moderation for active groups with instant webhook execution and persistent storage.",
+      "Minimal, reliable group management with instant webhook execution and persistent storage.",
       "",
-      "• <b>🛡️ Admin &amp; Access:</b> Promotions, custom titles, mod stats, approvals &amp; watchlist",
-      "• <b>🔨 Enforcement:</b> Ban, mute, kick, timed actions, warnings, 52 locks, allowlist, antiflood, dup-guard &amp; blocklists",
-      "• <b>⚡ Automation:</b> Welcome/goodbye media &amp; text, polls, pins, purges, rules, filters, notes &amp; raid/night/quarantine controls",
+      "• <b>🛡️ Admin &amp; Ranks:</b> Promotions, custom titles, active admin leaderboard, approvals &amp; watchlist",
+      "• <b>⭐ Member Karma:</b> Automatic thank-you points, member ranks &amp; top helper leaderboard",
+      "• <b>🔨 Enforcement &amp; Tools:</b> Ban, mute, kick, warnings, 52 locks, antiflood, dup-guard, polls, filters &amp; notes",
       "",
       "Tap <b>Help</b> below to explore all commands."
     ].join("\n"),
@@ -541,31 +616,32 @@ function buildHelpMenuKeyboard() {
     inline_keyboard: [
       [
         { text: "🛡️ Admin", callback_data: "cc:c:admin" },
-        { text: "✅ Approval", callback_data: "cc:c:approval" },
-        { text: "🔨 Bans", callback_data: "cc:c:bans" }
+        { text: "⭐ Karma", callback_data: "cc:c:karma" },
+        { text: "✅ Approval", callback_data: "cc:c:approval" }
       ],
       [
+        { text: "🔨 Bans", callback_data: "cc:c:bans" },
         { text: "🔇 Mutes", callback_data: "cc:c:mutes" },
-        { text: "👢 Kicks", callback_data: "cc:c:kicks" },
-        { text: "⚠️ Warnings", callback_data: "cc:c:warnings" }
+        { text: "👢 Kicks", callback_data: "cc:c:kicks" }
       ],
       [
+        { text: "⚠️ Warnings", callback_data: "cc:c:warnings" },
         { text: "🔒 Locks", callback_data: "cc:c:locks" },
-        { text: "🌊 Antiflood", callback_data: "cc:c:flood" },
-        { text: "🚫 Blocklists", callback_data: "cc:c:blocklist" }
+        { text: "🌊 Antiflood", callback_data: "cc:c:flood" }
       ],
       [
+        { text: "🚫 Blocklists", callback_data: "cc:c:blocklist" },
         { text: "💬 Filters", callback_data: "cc:c:filters" },
-        { text: "📝 Notes", callback_data: "cc:c:notes" },
-        { text: "👋 Greetings", callback_data: "cc:c:greetings" }
+        { text: "📝 Notes", callback_data: "cc:c:notes" }
       ],
       [
+        { text: "👋 Greetings", callback_data: "cc:c:greetings" },
         { text: "📌 Pin & Linked", callback_data: "cc:c:pin" },
-        { text: "🧹 Purges", callback_data: "cc:c:purges" },
-        { text: "📜 Rules", callback_data: "cc:c:rules" }
+        { text: "🧹 Purges", callback_data: "cc:c:purges" }
       ],
       [
-        { text: "🛠️ Raid, Polls & Tools", callback_data: "cc:c:raid_misc" }
+        { text: "📜 Rules", callback_data: "cc:c:rules" },
+        { text: "🛠️ Raid & Polls", callback_data: "cc:c:raid_misc" }
       ],
       [
         { text: "🏠 Overview", callback_data: "cc:intro" }
@@ -1259,7 +1335,7 @@ async function sendEntryResponse(token, chatId, message, entry, isNoFormat = fal
   return true;
 }
 
-async function applyPunishment(token, chatId, targetUser, action, durationSeconds = 0, reason = "", logChatId = "", actorId = null) {
+async function applyPunishment(token, chatId, targetUser, action, durationSeconds = 0, reason = "", logChatId = "", actorUser = null) {
   const untilDate = durationSeconds > 0 ? Math.floor(Date.now() / 1000) + durationSeconds : undefined;
   const label = targetUser?.username
     ? `@${targetUser.username}`
@@ -1290,8 +1366,8 @@ async function applyPunishment(token, chatId, targetUser, action, durationSecond
     throw new Error(`Unsupported action: ${action}`);
   }
 
-  if (actorId) {
-    await recordModStat(chatId, actorId, action);
+  if (actorUser?.id) {
+    await recordAdminActivity(chatId, actorUser, action);
   }
   if (logChatId) {
     await sendAuditLog(token, logChatId, `Chat ${chatId}: ${out.replace(/\n/g, " | ")}`);
@@ -1299,7 +1375,7 @@ async function applyPunishment(token, chatId, targetUser, action, durationSecond
   return out;
 }
 
-async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessageId = null, logChatId = "", silent = false, actorId = null) {
+async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessageId = null, logChatId = "", silent = false, actorUser = null) {
   const now = Date.now();
   const uid = String(targetUser.id);
   const wCfg = cfg.warnings;
@@ -1316,8 +1392,8 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
   warns.push({ reason: reason || "Warning", at: now });
   await storeSet(warnKey, warns);
 
-  if (actorId) {
-    await recordModStat(chatId, actorId, "warn");
+  if (actorUser?.id) {
+    await recordAdminActivity(chatId, actorUser, "warn");
   }
 
   const label = targetUser?.username
@@ -1327,7 +1403,7 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
   if (warns.length >= (wCfg.limit || 3)) {
     await storeSet(warnKey, []);
     if (PUNISHMENT_ACTIONS.has(wCfg.mode)) {
-      const msg = await applyPunishment(token, chatId, targetUser, wCfg.mode, wCfg.durationSeconds, reason, logChatId, actorId);
+      const msg = await applyPunishment(token, chatId, targetUser, wCfg.mode, wCfg.durationSeconds, reason, logChatId, actorUser);
       if (!silent) {
         await safeSend(token, chatId, `${msg} (reached ${wCfg.limit}/${wCfg.limit} warnings).`, undefined, replyToMessageId);
       }
@@ -1344,22 +1420,22 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
   }
 }
 
-async function runEnforcementAction(token, chatId, sender, mode, durationSeconds, reason, logChatId, actorId = null) {
+async function runEnforcementAction(token, chatId, sender, mode, durationSeconds, reason, logChatId, actorUser = null) {
   if (!mode || mode === "nothing") return;
   if (mode === "warn") {
-    await applyWarning(token, chatId, sender, reason, await getChatConfig(chatId), null, logChatId, false, actorId);
+    await applyWarning(token, chatId, sender, reason, await getChatConfig(chatId), null, logChatId, false, actorUser);
     return;
   }
   if (!PUNISHMENT_ACTIONS.has(mode)) return;
   try {
-    const resText = await applyPunishment(token, chatId, sender, mode, durationSeconds || 0, reason, logChatId, actorId);
+    const resText = await applyPunishment(token, chatId, sender, mode, durationSeconds || 0, reason, logChatId, actorUser);
     await safeSend(token, chatId, resText);
   } catch (err) {
     await safeSend(token, chatId, `Action (${mode}) failed for ${sender?.first_name || sender?.id}: ${err.message}`);
   }
 }
 
-async function handleMessage(message, token, logChatId = "") {
+async function handleMessage(message, token, logChatId = "", isEdited = false) {
   const chatId = message.chat.id;
   const isGroup = message.chat.type === "group" || message.chat.type === "supergroup";
   const sender = message.from;
@@ -1516,6 +1592,10 @@ async function handleMessage(message, token, logChatId = "") {
     ? Array.isArray(cfg.approvedUsers) && cfg.approvedUsers.includes(senderId)
     : false;
 
+  if (senderIsAdmin && senderId && !isEdited) {
+    await recordAdminActivity(chatId, sender, null);
+  }
+
   if (cmdName && !senderIsAdmin && (cfg.disabledCommands || []).includes(cmdName)) {
     return;
   }
@@ -1535,7 +1615,8 @@ async function handleMessage(message, token, logChatId = "") {
   if (cmdName && cfg.cleanCommands.length > 0) {
     const adminOnlySet = new Set([
       "promote", "demote", "title", "admincache", "anonadmin", "adminerror", "reports",
-      "modstats", "resetmodstats", "watchlist", "unwatchlist", "checkuser",
+      "adminrank", "modstats", "resetmodstats", "watchlist", "unwatchlist", "checkuser",
+      "karmaenable", "setkarma", "resetkarma",
       "approve", "unapprove", "approved", "unapproveall",
       "setflood", "setfloodtimer", "floodmode", "clearflood", "floodslow",
       "dupguard", "quarantine", "lockall", "unlockall", "cleanservice",
@@ -1560,7 +1641,7 @@ async function handleMessage(message, token, logChatId = "") {
     const userKnownSet = new Set([
       "start", "help", "id", "info", "chatinfo", "adminlist", "approval", "flood", "blocklist",
       "cleancommandtypes", "locks", "locktypes", "filters", "get", "notes",
-      "pinned", "rules", "warnings", "warns", "kickme", "report"
+      "pinned", "rules", "warnings", "warns", "kickme", "report", "karma", "topkarma"
     ]);
     const isAdminCmd = adminOnlySet.has(cmdName);
     const isKnown = isAdminCmd || userKnownSet.has(cmdName);
@@ -1643,7 +1724,7 @@ async function handleMessage(message, token, logChatId = "") {
       }
     }
 
-    if (cfg.dupGuard?.limit > 1) {
+    if (!isEdited && cfg.dupGuard?.limit > 1) {
       const sig = buildDuplicateSignature(message);
       if (sig) {
         const dKey = `${chatId}:${senderId}`;
@@ -1668,7 +1749,7 @@ async function handleMessage(message, token, logChatId = "") {
       }
     }
 
-    if (cfg.flood.limit > 0 || cfg.flood.timerCount > 0) {
+    if (!isEdited && (cfg.flood.limit > 0 || cfg.flood.timerCount > 0)) {
       const fKey = `${chatId}:${senderId}`;
       const now = Date.now();
       const storedSt = await storeGet(`flood:${fKey}`);
@@ -1725,6 +1806,38 @@ async function handleMessage(message, token, logChatId = "") {
     await storeSet(`flood:${chatId}:${senderId}`, resetSt);
   }
 
+  if (
+    !isEdited &&
+    cfg.karmaEnabled &&
+    senderId &&
+    message.reply_to_message?.from?.id &&
+    !message.reply_to_message.from.is_bot &&
+    message.reply_to_message.from.id !== senderId &&
+    isThankYouMessage(rawText)
+  ) {
+    const receiver = message.reply_to_message.from;
+    const cooldownKey = `karma_cd:${chatId}:${senderId}:${receiver.id}`;
+    const lastGiven = Number((await storeGet(cooldownKey)) || 0);
+    if (Date.now() - lastGiven >= 30000) {
+      await storeSet(cooldownKey, Date.now());
+      const rk = String(receiver.id);
+      const curRec = cfg.karma[rk] || { name: getUserDisplayLabel(receiver, rk), points: 0 };
+      curRec.name = getUserDisplayLabel(receiver, rk);
+      curRec.points = (curRec.points || 0) + 1;
+      cfg.karma[rk] = curRec;
+      await saveChatConfig(chatId, cfg);
+
+      const rankBadge = getKarmaRankBadge(curRec.points);
+      await safeSend(
+        token,
+        chatId,
+        `⭐ +1 Karma awarded to ${curRec.name} (Total: ${curRec.points} pts • ${rankBadge})`,
+        undefined,
+        message.message_id
+      );
+    }
+  }
+
   if (cmd === "/start") {
     const p = rawText.split(/\s+/);
     if (p[1] && p[1].startsWith("rules_")) {
@@ -1758,6 +1871,105 @@ async function handleMessage(message, token, logChatId = "") {
     return;
   }
 
+  if (cmd === "/karma") {
+    const target = await resolveTargetUser(token, message, parts);
+    const uid = target.id || senderId;
+    const uObj = target.user || sender;
+    if (!uid) {
+      await safeSend(token, chatId, "Reply to user or mention Telegram unique ID.", undefined, message.message_id);
+      return;
+    }
+    const rec = cfg.karma?.[String(uid)] || { name: getUserDisplayLabel(uObj, uid), points: 0 };
+    const pts = rec.points || 0;
+    const badge = getKarmaRankBadge(pts);
+    await safeSend(
+      token,
+      chatId,
+      `⭐ Karma Profile\nUser: ${rec.name || getUserDisplayLabel(uObj, uid)}\nPoints: ${pts}\nRank: ${badge}`,
+      undefined,
+      message.message_id
+    );
+    return;
+  }
+
+  if (cmd === "/topkarma") {
+    const entries = Object.entries(cfg.karma || {})
+      .map(([id, data]) => ({
+        id,
+        name: data?.name || `ID ${id}`,
+        points: data?.points || 0,
+      }))
+      .filter((e) => e.points > 0)
+      .sort((a, b) => b.points - a.points)
+      .slice(0, 10);
+
+    if (!entries.length) {
+      await safeSend(token, chatId, "No karma points recorded yet. Reply 'thanks' to helpful members!", undefined, message.message_id);
+      return;
+    }
+
+    const lines = entries.map(
+      (e, idx) => `${idx + 1}. ${e.name} — ${e.points} pts (${getKarmaRankBadge(e.points)})`
+    );
+    await safeSend(
+      token,
+      chatId,
+      `🏆 Top Helpful Members\n──────────────────────\n${lines.join("\n")}`,
+      undefined,
+      message.message_id
+    );
+    return;
+  }
+
+  if (cmd === "/adminrank") {
+    const admins = await getChatAdminsCached(token, chatId);
+    const ranked = admins
+      .filter((a) => !a.user?.is_bot)
+      .map((a) => {
+        const uid = String(a.user.id);
+        const st = cfg.modStats?.[uid] || {
+          name: getUserDisplayLabel(a.user, uid),
+          messages: 0,
+          ban: 0,
+          tban: 0,
+          mute: 0,
+          tmute: 0,
+          kick: 0,
+          warn: 0,
+        };
+        const actions = (st.ban || 0) + (st.tban || 0) + (st.mute || 0) + (st.tmute || 0) + (st.kick || 0) + (st.warn || 0);
+        const msgs = st.messages || 0;
+        const score = computeAdminScore(st);
+        return {
+          uid,
+          name: st.name || getUserDisplayLabel(a.user, uid),
+          msgs,
+          actions,
+          score,
+          badge: getAdminRankBadge(score),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    if (!ranked.length) {
+      await safeSend(token, chatId, "No human admins found to rank.", undefined, message.message_id);
+      return;
+    }
+
+    const lines = ranked.map(
+      (r, idx) =>
+        `${idx + 1}. ${r.name} [${r.badge}]\n   Score: ${r.score} pts (${r.msgs} msgs • ${r.actions} actions)`
+    );
+    await safeSend(
+      token,
+      chatId,
+      `🛡️ Admin Activity Rankings\n──────────────────────\n${lines.join("\n")}`,
+      undefined,
+      message.message_id
+    );
+    return;
+  }
+
   if (cmd === "/id") {
     const replyId = message.reply_to_message?.from?.id;
     await safeSend(
@@ -1774,10 +1986,11 @@ async function handleMessage(message, token, logChatId = "") {
     const target = await resolveTargetUser(token, message, parts);
     const u = target.user || sender;
     const watchNote = u?.id ? cfg.watchlist?.[String(u.id)] : "";
+    const kPts = u?.id ? (cfg.karma?.[String(u.id)]?.points || 0) : 0;
     await safeSend(
       token,
       chatId,
-      `User Info:\nName: ${u?.first_name || "N/A"}${u?.last_name ? ` ${u.last_name}` : ""}\nUsername: ${u?.username ? `@${u.username}` : "None"}\nID: ${u?.id ?? "N/A"}${watchNote ? `\nWatchlist: ${watchNote}` : ""}`,
+      `User Info:\nName: ${u?.first_name || "N/A"}${u?.last_name ? ` ${u.last_name}` : ""}\nUsername: ${u?.username ? `@${u.username}` : "None"}\nID: ${u?.id ?? "N/A"}\nKarma: ${kPts} pts (${getKarmaRankBadge(kPts)})${watchNote ? `\nWatchlist: ${watchNote}` : ""}`,
       undefined,
       message.message_id
     );
@@ -1867,7 +2080,9 @@ async function handleMessage(message, token, logChatId = "") {
     const lines = admins.map((a) => {
       const role = a.status === "creator" ? " [Creator]" : "";
       const title = a.custom_title ? ` (${a.custom_title})` : "";
-      return `- ${a.user.first_name}${a.user.username ? ` (@${a.user.username})` : ""}${role}${title}`;
+      const st = cfg.modStats?.[String(a.user.id)];
+      const badge = !a.user.is_bot ? ` • ${getAdminRankBadge(computeAdminScore(st))}` : "";
+      return `- ${a.user.first_name}${a.user.username ? ` (@${a.user.username})` : ""}${role}${title}${badge}`;
     });
     await safeSend(token, chatId, lines.length ? `Admins:\n${lines.join("\n")}` : "No admins found.", undefined, message.message_id);
     return;
@@ -2012,8 +2227,9 @@ async function handleMessage(message, token, logChatId = "") {
   const adminCommands = new Set([
     "/promote", "/demote", "/title", "/admincache", "/anonadmin", "/adminerror", "/reports",
     "/modstats", "/resetmodstats", "/watchlist", "/unwatchlist", "/checkuser",
+    "/karmaenable", "/setkarma", "/resetkarma",
     "/approve", "/unapprove", "/approved", "/unapproveall",
-    "/setflood", "/setfloodtimer", "/floodmode", "/clearflood", "floodslow",
+    "/setflood", "/setfloodtimer", "/floodmode", "/clearflood",
     "/floodslow", "/dupguard", "/quarantine", "/lockall", "/unlockall", "/cleanservice",
     "/invite", "/disable", "/enable", "/disabled", "/resetconfig",
     "/raidmode", "/autoraid", "/raidactiontime", "/slowmode", "/nightmode", "/setnightmode",
@@ -2072,6 +2288,42 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
 
   const replyAdmin = (text, replyMarkup) =>
     safeSend(token, chatId, text, replyMarkup, adminMsgId);
+
+  if (cmd === "/karmaenable") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await replyAdmin("Usage: /karmaenable <on|off>");
+      return;
+    }
+    cfg.karmaEnabled = flag;
+    await saveChatConfig(chatId, cfg);
+    await replyAdmin(`Member karma system set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/setkarma") {
+    const target = await resolveTargetUser(token, message, parts);
+    const val = parseInt(target.args[0], 10);
+    if (!target.id || Number.isNaN(val)) {
+      await replyAdmin("Usage: /setkarma [reply | @user | ID] <points>");
+      return;
+    }
+    const rk = String(target.id);
+    cfg.karma[rk] = {
+      name: target.user ? getUserDisplayLabel(target.user, rk) : target.label,
+      points: Math.max(0, val),
+    };
+    await saveChatConfig(chatId, cfg);
+    await replyAdmin(`Set karma for ${target.label} to ${Math.max(0, val)} pts.`);
+    return;
+  }
+
+  if (cmd === "/resetkarma") {
+    cfg.karma = {};
+    await saveChatConfig(chatId, cfg);
+    await replyAdmin("All member karma points have been reset.");
+    return;
+  }
 
   if (cmd === "/lockall" || cmd === "/unlockall") {
     const right = await checkBotPermission(token, chatId, "can_restrict_members");
@@ -2213,9 +2465,20 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/modstats") {
     const target = await resolveTargetUser(token, message, parts);
     const statId = target.id || senderId;
-    const stats = cfg.modStats?.[String(statId)] || { ban: 0, tban: 0, mute: 0, tmute: 0, kick: 0, warn: 0 };
+    const stats = cfg.modStats?.[String(statId)] || {
+      name: target.id ? target.label : getUserDisplayLabel(message.from, statId),
+      messages: 0,
+      ban: 0,
+      tban: 0,
+      mute: 0,
+      tmute: 0,
+      kick: 0,
+      warn: 0,
+    };
+    const score = computeAdminScore(stats);
+    const badge = getAdminRankBadge(score);
     await replyAdmin(
-      `Mod Stats (${target.id ? target.label : `ID ${statId}`}):\nBans: ${stats.ban + stats.tban} | Mutes: ${stats.mute + stats.tmute} | Kicks: ${stats.kick} | Warns: ${stats.warn}`
+      `🛡️ Admin Activity (${stats.name || `ID ${statId}`})\nRank: ${badge} (${score} pts)\nMessages: ${stats.messages || 0}\nBans: ${(stats.ban || 0) + (stats.tban || 0)} | Mutes: ${(stats.mute || 0) + (stats.tmute || 0)} | Kicks: ${stats.kick || 0} | Warns: ${stats.warn || 0}`
     );
     return;
   }
@@ -2223,7 +2486,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/resetmodstats") {
     cfg.modStats = {};
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Moderation stats reset.");
+    await replyAdmin("Admin activity & moderation rankings reset.");
     return;
   }
 
@@ -2261,8 +2524,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const isApp = (cfg.approvedUsers || []).includes(target.id);
     const wList = (await storeGet(`warns:${chatId}:${target.id}`)) || [];
     const wNote = cfg.watchlist?.[String(target.id)] || "None";
+    const kPts = cfg.karma?.[String(target.id)]?.points || 0;
     await replyAdmin(
-      `User Check (${target.label}):\nID: ${target.id}\nApproved: ${isApp ? "Yes" : "No"}\nWarnings: ${wList.length}/${cfg.warnings.limit}\nWatchlist: ${wNote}`
+      `User Check (${target.label}):\nID: ${target.id}\nApproved: ${isApp ? "Yes" : "No"}\nKarma: ${kPts} pts (${getKarmaRankBadge(kPts)})\nWarnings: ${wList.length}/${cfg.warnings.limit}\nWatchlist: ${wNote}`
     );
     return;
   }
@@ -3353,7 +3617,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
       }
 
-      const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tban" : "ban", durSec || 0, reason, logChatId, senderId);
+      const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tban" : "ban", durSec || 0, reason, logChatId, message.from);
       if (cmd !== "/sban") {
         await replyAdmin(resText);
       }
@@ -3374,7 +3638,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       if (cmd === "/skick") {
         await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
       }
-      const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, "kick", 0, reason, logChatId, senderId);
+      const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, "kick", 0, reason, logChatId, message.from);
       if (cmd !== "/skick") {
         await replyAdmin(resText);
       }
@@ -3397,7 +3661,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
       }
 
-      const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tmute" : "mute", durSec || 0, reason, logChatId, senderId);
+      const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tmute" : "mute", durSec || 0, reason, logChatId, message.from);
       if (cmd !== "/smute") {
         await replyAdmin(resText);
       }
@@ -3446,7 +3710,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         isSilent ? null : adminMsgId,
         logChatId,
         isSilent,
-        senderId
+        message.from
       );
       return;
     }
@@ -3631,3 +3895,4 @@ async function tgApi(token, method, body) {
   }
   return data;
 }
+
