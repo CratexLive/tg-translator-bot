@@ -75,7 +75,7 @@ const HELP_CATEGORIES = {
       "<b>Commands &amp; Usage:</b>",
       "• /ban [@user|id|reply] [reason] — Permanently ban a user.",
       "• /dban [reason] — Delete replied message and ban its sender.",
-      "• /sban [reason] — Silently ban user (no reply or confirmation).",
+      "• /sban [reason] — Silently ban user (removes command/replied message).",
       "• /tban [@user|id|reply] &lt;time&gt; [reason] — Temporarily ban (s/m/h/d/w).",
       "• /unban [@user|id|reply] — Unban or lift restrictions on a user.",
       "",
@@ -93,7 +93,7 @@ const HELP_CATEGORIES = {
       "<b>Commands &amp; Usage:</b>",
       "• /mute [@user|id|reply] [reason] — Restrict user from sending messages.",
       "• /dmute [reason] — Delete replied message and mute sender.",
-      "• /smute [reason] — Silently mute user (no reply or confirmation).",
+      "• /smute [reason] — Silently mute user (removes command/replied message).",
       "• /tmute [@user|id|reply] &lt;time&gt; [reason] — Temporarily mute user.",
       "• /unmute [@user|id|reply] — Restore user messaging permissions.",
       "",
@@ -111,7 +111,7 @@ const HELP_CATEGORIES = {
       "<b>Commands &amp; Usage:</b>",
       "• /kick [@user|id|reply] [reason] — Remove user from group (rejoin allowed).",
       "• /dkick [reason] — Delete replied message and kick sender.",
-      "• /skick [reason] — Silently kick user (no reply or confirmation).",
+      "• /skick [reason] — Silently kick user (removes command/replied message).",
       "• /kickme — Remove yourself from the group.",
       "",
       "<b>Examples:</b>",
@@ -1386,6 +1386,18 @@ async function handleMessage(message, token, logChatId = "") {
     });
   }
 
+  if (message.reply_to_message?.from?.id) {
+    const rf = message.reply_to_message.from;
+    if (rf.username) {
+      await storeSet(`user:${rf.username.toLowerCase()}`, {
+        id: rf.id,
+        first_name: rf.first_name,
+        last_name: rf.last_name,
+        username: rf.username,
+      });
+    }
+  }
+
   const rawText = typeof message.text === "string"
     ? message.text.trim()
     : typeof message.caption === "string"
@@ -1442,6 +1454,14 @@ async function handleMessage(message, token, logChatId = "") {
 
   if (message.new_chat_members?.length > 0) {
     for (const member of message.new_chat_members) {
+      if (member?.username && member?.id) {
+        await storeSet(`user:${member.username.toLowerCase()}`, {
+          id: member.id,
+          first_name: member.first_name,
+          last_name: member.last_name,
+          username: member.username,
+        });
+      }
       await processNewMemberJoin(token, chatId, cfg, member, message.chat);
     }
     return;
@@ -3032,7 +3052,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   const target = await resolveTargetUser(token, message, parts);
   if (!target.id) {
     await replyAdmin(
-      `Specify a target by replying to a message or using ${cmd} @username / ${cmd} <user_id>.`
+      target.hint || `Specify a target by replying to a message or using ${cmd} @username / ${cmd} <user_id>.`
     );
     return;
   }
@@ -3191,29 +3211,53 @@ async function resolveTargetUser(token, message, parts) {
       label: replied.username ? `@${replied.username}` : `${replied.id}`,
       user: replied,
       args: parts.slice(1),
+      hint: "",
+    };
+  }
+
+  const entities = message.entities || [];
+  const textMention = entities.find((e) => e.type === "text_mention" && e.user?.id);
+  if (textMention?.user?.id) {
+    const u = textMention.user;
+    return {
+      id: u.id,
+      label: u.username ? `@${u.username}` : `${u.id}`,
+      user: u,
+      args: parts.slice(2),
+      hint: "",
     };
   }
 
   const firstArg = (parts[1] || "").trim();
   if (/^\d+$/.test(firstArg)) {
     const id = Number(firstArg);
-    return { id, label: firstArg, user: { id, first_name: firstArg }, args: parts.slice(2) };
+    return { id, label: firstArg, user: { id, first_name: firstArg }, args: parts.slice(2), hint: "" };
   }
 
   if (/^@[a-zA-Z0-9_]{3,}$/.test(firstArg)) {
-    const cachedUser = await storeGet(`user:${firstArg.slice(1).toLowerCase()}`);
+    const cleanUname = firstArg.slice(1).toLowerCase();
+    const cachedUser = await storeGet(`user:${cleanUname}`);
     if (cachedUser?.id) {
-      return { id: cachedUser.id, label: firstArg, user: cachedUser, args: parts.slice(2) };
+      return { id: cachedUser.id, label: firstArg, user: cachedUser, args: parts.slice(2), hint: "" };
     }
     try {
       const chatRes = await tgApi(token, "getChat", { chat_id: firstArg });
       if (chatRes?.result?.id) {
-        return { id: chatRes.result.id, label: firstArg, user: chatRes.result, args: parts.slice(2) };
+        const u = chatRes.result;
+        await storeSet(`user:${cleanUname}`, u);
+        return { id: u.id, label: firstArg, user: u, args: parts.slice(2), hint: "" };
       }
     } catch {}
+    return {
+      id: null,
+      label: firstArg,
+      user: null,
+      args: parts.slice(2),
+      hint: `Could not resolve ${firstArg} via Telegram Bot API. Reply to ${firstArg}'s message or pass their numeric user ID.`,
+    };
   }
 
-  return { id: null, label: "", user: null, args: parts.slice(1) };
+  return { id: null, label: "", user: null, args: parts.slice(1), hint: "" };
 }
 
 async function checkBotPermission(token, chatId, requiredPerm) {
@@ -3321,4 +3365,3 @@ async function tgApi(token, method, body) {
   }
   return data;
 }
-
