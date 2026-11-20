@@ -1,32 +1,33 @@
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(200).send("OK");
-  }
-
-  const token = (process.env.TELEGRAM_TOKEN || "").trim();
-  const secret = (process.env.WEBHOOK_SECRET || "").trim();
-  const logChatId = (process.env.LOG_CHAT_ID || "").trim();
-
-  if (!token) {
-    return res.status(500).send("Missing TELEGRAM_TOKEN");
-  }
-
-  if (secret && req.headers["x-telegram-bot-api-secret-token"] !== secret) {
-    return res.status(401).send("Unauthorized");
-  }
-
-  let update;
   try {
-    update = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-  } catch {
-    return res.status(400).send("Bad JSON");
-  }
+    if (req.method !== "POST") {
+      return res.status(200).send("OK");
+    }
 
-  if (!update) {
-    return res.status(200).json({ ok: true });
-  }
+    const token = (process.env.TELEGRAM_TOKEN || "").trim();
+    const secret = (process.env.WEBHOOK_SECRET || "").trim();
+    const logChatId = (process.env.LOG_CHAT_ID || "").trim();
 
-  try {
+    if (!token) {
+      return res.status(200).json({ ok: true, error: "Missing TELEGRAM_TOKEN" });
+    }
+
+    if (secret && req.headers["x-telegram-bot-api-secret-token"] !== secret) {
+      return res.status(401).send("Unauthorized");
+    }
+
+    let update = req.body;
+    if (typeof update === "string") {
+      try {
+        update = JSON.parse(update);
+      } catch {
+        return res.status(200).json({ ok: true });
+      }
+    }
+    if (!update || typeof update !== "object") {
+      return res.status(200).json({ ok: true });
+    }
+
     if (update.my_chat_member) {
       await onBotStatus(update.my_chat_member, token, logChatId);
       return res.status(200).json({ ok: true });
@@ -42,11 +43,7 @@ export default async function handler(req, res) {
           });
         } catch (err) {
           if (logChatId) {
-            await safeSend(
-              token,
-              logChatId,
-              `Auto-approve failed in ${jr.chat.id} for user ${jr.from.id}: ${err.message}`
-            );
+            await safeSend(token, logChatId, `Auto-approve failed in ${jr.chat.id}: ${err.message}`);
           }
         }
       }
@@ -59,13 +56,13 @@ export default async function handler(req, res) {
     }
 
     const msg = update.message || update.edited_message;
-    if (msg?.chat?.id && msg?.text) {
+    if (msg?.chat?.id && typeof msg.text === "string" && msg.text.trim()) {
       await onMessage(msg, token);
     }
 
     return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("Webhook error:", err);
+    console.error("Fatal handler error:", err);
     return res.status(200).json({ ok: true });
   }
 }
@@ -75,47 +72,37 @@ async function onBotStatus(mcm, token, logChatId) {
   const from = mcm.from;
   const prev = mcm.old_chat_member?.status;
   const curr = mcm.new_chat_member?.status;
+  if (!chat?.id || prev === curr) return;
 
-  if (prev === curr) return;
-
-  const title = chat?.title || chat?.id;
-  const actor = from?.username
-    ? `@${from.username}`
-    : from?.first_name || from?.id || "Admin";
-
+  const title = chat.title || String(chat.id);
+  const actor = from?.username ? `@${from.username}` : from?.first_name || from?.id || "Admin";
   let alert = "";
 
   if (curr === "kicked" || curr === "left") {
-    const action = curr === "kicked" ? "BANNED / KICKED" : "REMOVED / LEFT";
-    alert = `Alert: I was ${action} from "${title}" (${chat.id}) by ${actor}.`;
+    alert = `Alert: Mujhe "${title}" (${chat.id}) se ${curr === "kicked" ? "BAN/KICK" : "REMOVE"} kar diya gaya. By: ${actor}`;
   } else if (prev === "administrator" && curr === "member") {
-    alert = `Alert: My ADMIN permissions were removed in "${title}" (${chat.id}) by ${actor}.`;
+    alert = `Alert: "${title}" (${chat.id}) mein meri ADMIN power hata di gayi. By: ${actor}`;
   } else if (curr === "administrator") {
-    alert = `Info: I was promoted to ADMIN in "${title}" (${chat.id}) by ${actor}.`;
+    alert = `Info: Mujhe "${title}" (${chat.id}) mein ADMIN bana diya gaya. By: ${actor}`;
   }
 
   if (!alert) return;
-
-  if (from?.id) {
-    await safeSend(token, from.id, alert);
-  }
-  if (logChatId) {
-    await safeSend(token, logChatId, alert);
-  }
+  if (from?.id) await safeSend(token, from.id, alert);
+  if (logChatId) await safeSend(token, logChatId, alert);
 }
 
 async function onCallback(cq, token) {
   const chatId = cq.message?.chat?.id;
   const menuText = {
     "m:mod":
-      "Group Moderation Commands:\n/ban [@user|id|reply] [reason]\n/tban [@user|id|reply] 2d [reason]\n/unban [@user|id|reply]\n/mute [@user|id|reply] [reason]\n/tmute [@user|id|reply] 2h [reason]\n/unmute [@user|id|reply]\n/kick [@user|id|reply] [reason]\n/pin (reply)\n/unpin",
+      "Group Moderation:\n/ban [@user|id|reply] [reason]\n/tban [@user|id|reply] 2d [reason]\n/unban [@user|id|reply]\n/mute [@user|id|reply] [reason]\n/tmute [@user|id|reply] 2h [reason]\n/unmute [@user|id|reply]\n/kick [@user|id|reply] [reason]\n/pin (reply)\n/unpin",
     "m:approve":
-      "Auto-Approve Setup:\n1. Make the bot an admin with Invite Users permission.\n2. Create an invite link with Request Admin Approval enabled.",
+      "Auto-Approve:\nChannel/Group invite link mein Request Admin Approval ON rakhein aur bot ko Invite Users right dein.",
     "m:rights":
-      "Permissions & Alerts:\n- I will notify you if I lack required admin rights.\n- I will notify you in DM (and LOG_CHAT_ID if set) if I am banned, kicked, or demoted.",
+      "Rights & Ban Alerts:\n- Right kam hoga to batunga.\n- Ban/kick/demote hone par DM aur LOG_CHAT_ID mein notify karunga.",
   };
 
-  await tg(token, "answerCallbackQuery", { callback_query_id: cq.id });
+  await safeTg(token, "answerCallbackQuery", { callback_query_id: cq.id });
   if (chatId && menuText[cq.data]) {
     await safeSend(token, chatId, menuText[cq.data]);
   }
@@ -130,19 +117,20 @@ async function onMessage(msg, token) {
   const cmd = parts[0].toLowerCase();
 
   if (cmd === "/start" || cmd === "/help") {
-    await tg(token, "sendMessage", {
-      chat_id: chatId,
-      text: "Group Manager Bot is online. Use moderation commands in groups and auto-approve in channels or groups.",
-      reply_markup: {
+    await safeSendWithKeyboard(
+      token,
+      chatId,
+      "Bot ready hai. Group mein moderation aur channel/group mein auto-approve active hai.",
+      {
         inline_keyboard: [
           [
             { text: "Moderation", callback_data: "m:mod" },
             { text: "Auto-Approve", callback_data: "m:approve" },
           ],
-          [{ text: "Rights & Alerts", callback_data: "m:rights" }],
+          [{ text: "Rights & Ban Alert", callback_data: "m:rights" }],
         ],
-      },
-    });
+      }
+    );
     return;
   }
 
@@ -151,37 +139,25 @@ async function onMessage(msg, token) {
     await safeSend(
       token,
       chatId,
-      `Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}`
+      `Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied ID: ${replyId}` : ""}`
     );
     return;
   }
 
-  const modCmds = [
-    "/ban",
-    "/tban",
-    "/unban",
-    "/mute",
-    "/tmute",
-    "/unmute",
-    "/kick",
-    "/pin",
-    "/unpin",
-  ];
-
+  const modCmds = ["/ban", "/tban", "/unban", "/mute", "/tmute", "/unmute", "/kick", "/pin", "/unpin"];
   if (!modCmds.includes(cmd)) return;
 
   if (!isGroup) {
-    await safeSend(token, chatId, "Moderation commands only work in groups and supergroups.");
+    await safeSend(token, chatId, "Ye commands group ya supergroup mein chalate hain.");
     return;
   }
 
   if (!senderId || !(await checkMemberAdmin(token, chatId, senderId))) {
-    await safeSend(token, chatId, "Only group administrators can use moderation commands.");
+    await safeSend(token, chatId, "Sirf admins ye command chala sakte hain.");
     return;
   }
 
-  const neededRight =
-    cmd === "/pin" || cmd === "/unpin" ? "can_pin_messages" : "can_restrict_members";
+  const neededRight = cmd === "/pin" || cmd === "/unpin" ? "can_pin_messages" : "can_restrict_members";
   const rightCheck = await checkBotRight(token, chatId, neededRight);
   if (!rightCheck.ok) {
     await safeSend(token, chatId, rightCheck.msg);
@@ -191,41 +167,41 @@ async function onMessage(msg, token) {
   if (cmd === "/pin") {
     const replyId = msg.reply_to_message?.message_id;
     if (!replyId) {
-      await safeSend(token, chatId, "Reply to the target message with /pin.");
+      await safeSend(token, chatId, "Jis message ko pin karna hai, uske reply mein /pin bhejein.");
       return;
     }
-    await tg(token, "pinChatMessage", { chat_id: chatId, message_id: replyId });
-    await safeSend(token, chatId, "Message pinned.");
+    try {
+      await tg(token, "pinChatMessage", { chat_id: chatId, message_id: replyId });
+      await safeSend(token, chatId, "Pinned.");
+    } catch (e) {
+      await safeSend(token, chatId, `Pin failed: ${e.message}`);
+    }
     return;
   }
 
   if (cmd === "/unpin") {
     const replyId = msg.reply_to_message?.message_id;
-    await tg(
-      token,
-      "unpinChatMessage",
-      replyId ? { chat_id: chatId, message_id: replyId } : { chat_id: chatId }
-    );
-    await safeSend(token, chatId, "Message unpinned.");
+    try {
+      await tg(
+        token,
+        "unpinChatMessage",
+        replyId ? { chat_id: chatId, message_id: replyId } : { chat_id: chatId }
+      );
+      await safeSend(token, chatId, "Unpinned.");
+    } catch (e) {
+      await safeSend(token, chatId, `Unpin failed: ${e.message}`);
+    }
     return;
   }
 
   const target = await getTarget(token, msg, parts);
   if (!target.id) {
-    await safeSend(
-      token,
-      chatId,
-      `Specify a user by replying to a message or using ${cmd} @username / ${cmd} <user_id>.`
-    );
+    await safeSend(token, chatId, `Reply karein ya ${cmd} @username / ${cmd} <user_id> likhein.`);
     return;
   }
 
   if (await checkMemberAdmin(token, chatId, target.id)) {
-    await safeSend(
-      token,
-      chatId,
-      `${target.label} is an administrator; I cannot run ${cmd} on an admin.`
-    );
+    await safeSend(token, chatId, `${target.label} admin hai, main admin par ${cmd} nahi kar sakta.`);
     return;
   }
 
@@ -236,43 +212,23 @@ async function onMessage(msg, token) {
       const body = { chat_id: chatId, user_id: target.id };
       if (dur) body.until_date = Math.floor(Date.now() / 1000) + dur;
       await tg(token, "banChatMember", body);
-      await safeSend(
-        token,
-        chatId,
-        `${target.label} ${dur ? "temporarily " : ""}banned. Reason: ${reason}`
-      );
+      await safeSend(token, chatId, `${target.label} ${dur ? "temp " : ""}banned. Reason: ${reason}`);
     } else if (cmd === "/unban") {
-      await tg(token, "unbanChatMember", {
-        chat_id: chatId,
-        user_id: target.id,
-        only_if_banned: true,
-      });
+      await tg(token, "unbanChatMember", { chat_id: chatId, user_id: target.id, only_if_banned: true });
       await safeSend(token, chatId, `${target.label} unbanned.`);
     } else if (cmd === "/kick") {
       const reason = target.args.join(" ") || "No reason";
       await tg(token, "banChatMember", { chat_id: chatId, user_id: target.id });
-      await tg(token, "unbanChatMember", {
-        chat_id: chatId,
-        user_id: target.id,
-        only_if_banned: true,
-      });
+      await tg(token, "unbanChatMember", { chat_id: chatId, user_id: target.id, only_if_banned: true });
       await safeSend(token, chatId, `${target.label} kicked. Reason: ${reason}`);
     } else if (cmd === "/mute" || cmd === "/tmute") {
       const parsed = cmd === "/tmute" ? parseSec(target.args[0]) : null;
       const dur = cmd === "/tmute" ? parsed ?? 600 : null;
       const reason = (parsed ? target.args.slice(1) : target.args).join(" ") || "No reason";
-      const body = {
-        chat_id: chatId,
-        user_id: target.id,
-        permissions: { can_send_messages: false },
-      };
+      const body = { chat_id: chatId, user_id: target.id, permissions: { can_send_messages: false } };
       if (dur) body.until_date = Math.floor(Date.now() / 1000) + dur;
       await tg(token, "restrictChatMember", body);
-      await safeSend(
-        token,
-        chatId,
-        `${target.label} muted${dur ? ` (${dur}s)` : ""}. Reason: ${reason}`
-      );
+      await safeSend(token, chatId, `${target.label} muted${dur ? ` (${dur}s)` : ""}. Reason: ${reason}`);
     } else if (cmd === "/unmute") {
       await tg(token, "restrictChatMember", {
         chat_id: chatId,
@@ -292,67 +248,50 @@ async function onMessage(msg, token) {
       });
       await safeSend(token, chatId, `${target.label} unmuted.`);
     }
-  } catch (err) {
-    await safeSend(token, chatId, `Action failed: ${err.message}`);
+  } catch (e) {
+    await safeSend(token, chatId, `Action failed: ${e.message}`);
   }
 }
 
 async function checkBotRight(token, chatId, permField) {
-  const me = await tg(token, "getMe", {});
-  const botId = me?.result?.id;
-  if (!botId) return { ok: false, msg: "Unable to verify bot account." };
+  try {
+    const me = await tg(token, "getMe", {});
+    const botId = me?.result?.id;
+    if (!botId) return { ok: false, msg: "Bot ID check fail hua." };
 
-  const res = await tg(token, "getChatMember", { chat_id: chatId, user_id: botId });
-  const m = res?.result;
-
-  if (!m || (m.status !== "administrator" && m.status !== "creator")) {
-    return {
-      ok: false,
-      msg: "I do not have ADMIN rights in this chat. Promote me to admin first.",
-    };
+    const res = await tg(token, "getChatMember", { chat_id: chatId, user_id: botId });
+    const m = res?.result;
+    if (!m || (m.status !== "administrator" && m.status !== "creator")) {
+      return { ok: false, msg: "Mere paas is group mein ADMIN right nahi hai." };
+    }
+    if (m.status === "creator") return { ok: true };
+    if (permField && !m[permField]) {
+      const names = {
+        can_restrict_members: "Ban / Restrict Members",
+        can_pin_messages: "Pin Messages",
+        can_invite_users: "Invite Users",
+      };
+      return { ok: false, msg: `Mere paas "${names[permField] || permField}" permission nahi hai.` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, msg: `Rights check error: ${e.message}` };
   }
-
-  if (m.status === "creator") return { ok: true };
-
-  if (permField && !m[permField]) {
-    const labels = {
-      can_restrict_members: "Ban / Restrict Members",
-      can_pin_messages: "Pin Messages",
-      can_invite_users: "Invite Users",
-    };
-    return {
-      ok: false,
-      msg: `I am missing the "${labels[permField] || permField}" permission.`,
-    };
-  }
-
-  return { ok: true };
 }
 
 async function getTarget(token, msg, parts) {
   const rUser = msg.reply_to_message?.from;
   if (rUser?.id) {
-    return {
-      id: rUser.id,
-      label: rUser.username ? `@${rUser.username}` : `${rUser.id}`,
-      args: parts.slice(1),
-    };
+    return { id: rUser.id, label: rUser.username ? `@${rUser.username}` : `${rUser.id}`, args: parts.slice(1) };
   }
-
-  const arg1 = (parts[1] || "").trim();
-  if (/^\d+$/.test(arg1)) {
-    return { id: Number(arg1), label: arg1, args: parts.slice(2) };
-  }
-
-  if (/^@[a-zA-Z0-9_]{3,}$/.test(arg1)) {
+  const a1 = (parts[1] || "").trim();
+  if (/^\d+$/.test(a1)) return { id: Number(a1), label: a1, args: parts.slice(2) };
+  if (/^@[a-zA-Z0-9_]{3,}$/.test(a1)) {
     try {
-      const c = await tg(token, "getChat", { chat_id: arg1 });
-      if (c?.result?.id) {
-        return { id: c.result.id, label: arg1, args: parts.slice(2) };
-      }
+      const c = await tg(token, "getChat", { chat_id: a1 });
+      if (c?.result?.id) return { id: c.result.id, label: a1, args: parts.slice(2) };
     } catch {}
   }
-
   return { id: null, label: "", args: parts.slice(1) };
 }
 
@@ -376,6 +315,20 @@ async function safeSend(token, chatId, text) {
   try {
     await tg(token, "sendMessage", { chat_id: chatId, text });
   } catch {}
+}
+
+async function safeSendWithKeyboard(token, chatId, text, replyMarkup) {
+  try {
+    await tg(token, "sendMessage", { chat_id: chatId, text, reply_markup: replyMarkup });
+  } catch {}
+}
+
+async function safeTg(token, method, body) {
+  try {
+    return await tg(token, method, body);
+  } catch {
+    return null;
+  }
 }
 
 async function tg(token, method, body) {
