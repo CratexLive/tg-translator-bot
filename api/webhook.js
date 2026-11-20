@@ -148,20 +148,20 @@ const HELP_CATEGORIES = {
   "cc:c:locks": {
     title: "Locks & Allowlist",
     body: [
-      "<b>Content Locks &amp; Allowlist (51 Types)</b>",
+      "<b>Content Locks &amp; Allowlist (52 Types)</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
       "• /lock &lt;type(s)&gt; [### reason {action}] — Lock types or apply custom rule.",
       "• /unlock &lt;type(s)&gt; — Unlock specified content types.",
       "• /locks [list] — View active locks or full lock summary.",
-      "• /locktypes — View all 51 supported lock types.",
+      "• /locktypes — View all supported lock types.",
       "• /lockwarns &lt;yes/no/on/off&gt; — Warn on locked content.",
       "• /allowlist [item|emojipack:&lt;&gt;] — Add or view allowlisted items.",
       "• /rmallowlist &lt;item&gt; — Remove item from allowlist.",
       "• /rmallowlistall — Clear allowlist.",
       "",
       "<b>Examples:</b>",
-      "• /lock sticker photo gif video",
+      "• /lock audio voice sticker photo gif video",
       "• /lock url ### No external links {mute}",
       "• /allowlist @CricxCrate"
     ].join("\n")
@@ -558,7 +558,7 @@ function buildStartIntro(botUsername = "") {
       "Engineered for high-traffic communities, match chats, and moderated groups with instant webhook execution and persistent Redis storage.",
       "",
       "• <b>Admin &amp; Access:</b> Promotions, custom ranks, admin cache, anonymous admin bypass &amp; user approvals",
-      "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 content locks, allowlists, antiflood &amp; wildcard blocklists",
+      "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 52 content locks, allowlists, antiflood &amp; wildcard blocklists",
       "• <b>Smart Automation:</b> Media/text greetings, polls, pin tools, purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
       "",
       "Select <b>Help</b> below to inspect every command category."
@@ -1058,7 +1058,11 @@ function detectLockMatches(msg) {
   const text = msg.text || msg.caption || "";
   const entities = msg.entities || msg.caption_entities || [];
 
-  if (msg.media_group_id) matches.add("album");
+  if (msg.media_group_id) {
+    matches.add("album");
+    matches.add("slideshow");
+    matches.add("collage");
+  }
   if (msg.sender_chat && msg.sender_chat.id === msg.chat.id) matches.add("anonchannel");
   if (msg.audio) matches.add("audio");
   if (msg.new_chat_members?.some((m) => m.is_bot)) matches.add("bot");
@@ -1083,11 +1087,11 @@ function detectLockMatches(msg) {
     matches.add("emoji");
   }
 
-  if (msg.forward_origin) {
+  if (msg.forward_origin || msg.forward_from || msg.forward_from_chat) {
     matches.add("forward");
-    const t = msg.forward_origin.type;
-    if (t === "user" || t === "hidden_user") matches.add("forwarduser");
-    else if (t === "channel" || t === "chat") matches.add("forwardchannel");
+    const t = msg.forward_origin?.type;
+    if (t === "user" || t === "hidden_user" || msg.forward_from) matches.add("forwarduser");
+    else if (t === "channel" || t === "chat" || msg.forward_from_chat) matches.add("forwardchannel");
   }
 
   if (text) {
@@ -1542,7 +1546,14 @@ async function handleMessage(message, token, logChatId = "") {
       if (!cfg.locks[lType]) continue;
       if (allowlisted && ALLOWLISTABLE_LOCKS.has(lType)) continue;
 
-      await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+      const delRes = await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+      if (!delRes?.ok) {
+        await safeSend(
+          token,
+          chatId,
+          `Locked (${lType}) triggered for ${sender.first_name}, but could not delete message (check bot delete permission).`
+        );
+      }
       const lConf = cfg.lockConfig[lType];
       const action = lConf?.action || (cfg.lockWarns ? "warn" : null);
       if (action) {
@@ -2435,13 +2446,17 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       const actMatch = trimmedRight.match(/\{(ban|mute|kick|tban|tmute|warn)\}/i);
       const action = actMatch ? actMatch[1].toLowerCase() : null;
       const reason = trimmedRight.replace(/\{[^}]+\}/g, "").trim();
-      for (const it of items) {
-        if (!LOCK_TYPES.includes(it)) continue;
+      const validCustom = items.filter((it) => LOCK_TYPES.includes(it));
+      if (!validCustom.length) {
+        await safeSend(token, chatId, `Unknown lock type(s): ${items.join(", ")}`);
+        return;
+      }
+      for (const it of validCustom) {
         cfg.locks[it] = true;
         cfg.lockConfig[it] = { action, reason, durationSeconds: 0 };
       }
       await saveChatConfig(chatId, cfg);
-      await safeSend(token, chatId, `Locked ${items.join(", ")} with custom action/reason.`);
+      await safeSend(token, chatId, `Locked ${validCustom.join(", ")} with custom action/reason.`);
       return;
     }
 
