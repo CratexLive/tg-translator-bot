@@ -3037,8 +3037,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   const needsRestrictRight = new Set([
     "/ban", "/dban", "/sban", "/tban", "/unban",
     "/mute", "/dmute", "/smute", "/tmute", "/unmute",
-    "/kick", "/dkick", "/skick",
-    "/warn", "/dwarn", "/swarn"
+    "/kick", "/dkick", "/skick"
   ]);
 
   if (needsRestrictRight.has(cmd)) {
