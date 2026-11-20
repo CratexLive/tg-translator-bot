@@ -1,53 +1,51 @@
 const LANGUAGES = {
   auto: {
     label: "Auto (EN <-> HI/Hinglish)",
-    instruction:
-      "Detect the language of the input text. If it is in English, translate it into natural Hindi. If it is in Hindi or Hinglish, translate it into natural English.",
+    rule: "Detect the input language. If English, translate to natural Hindi. If Hindi or Hinglish, translate to natural English.",
   },
   en: {
     label: "English",
-    instruction: "Translate the input text into natural, clear English.",
+    rule: "Translate to natural, clear English.",
   },
   hi: {
     label: "Hindi (हिन्दी)",
-    instruction: "Translate the input text into natural Hindi in Devanagari script.",
+    rule: "Translate to natural Hindi in Devanagari script.",
   },
   hinglish: {
     label: "Hinglish",
-    instruction:
-      "Translate the input text into natural everyday Hinglish written in Latin script.",
+    rule: "Translate to natural everyday Hinglish in Latin script.",
   },
   mr: {
     label: "Marathi (मराठी)",
-    instruction: "Translate the input text into natural Marathi in Devanagari script.",
+    rule: "Translate to natural Marathi in Devanagari script.",
   },
   ta: {
     label: "Tamil (தமிழ்)",
-    instruction: "Translate the input text into natural Tamil in Tamil script.",
+    rule: "Translate to natural Tamil in Tamil script.",
   },
   te: {
     label: "Telugu (తెలుగు)",
-    instruction: "Translate the input text into natural Telugu in Telugu script.",
+    rule: "Translate to natural Telugu in Telugu script.",
   },
   kn: {
     label: "Kannada (ಕನ್ನಡ)",
-    instruction: "Translate the input text into natural Kannada in Kannada script.",
+    rule: "Translate to natural Kannada in Kannada script.",
   },
   ml: {
     label: "Malayalam (മലയാളം)",
-    instruction: "Translate the input text into natural Malayalam in Malayalam script.",
+    rule: "Translate to natural Malayalam in Malayalam script.",
   },
   bn: {
     label: "Bengali (বাংলা)",
-    instruction: "Translate the input text into natural Bengali in Bengali script.",
+    rule: "Translate to natural Bengali in Bengali script.",
   },
   gu: {
     label: "Gujarati (ગુજરાતી)",
-    instruction: "Translate the input text into natural Gujarati in Gujarati script.",
+    rule: "Translate to natural Gujarati in Gujarati script.",
   },
   pa: {
     label: "Punjabi (ਪੰਜਾਬੀ)",
-    instruction: "Translate the input text into natural Punjabi in Gurmukhi script.",
+    rule: "Translate to natural Punjabi in Gurmukhi script.",
   },
 };
 
@@ -55,15 +53,15 @@ const DEFAULT_LANG = "auto";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(200).send("Telegram Translator Vercel endpoint is active.");
+    return res.status(200).send("Bot webhook is live.");
   }
 
-  const telegramToken = process.env.TELEGRAM_TOKEN;
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  const webhookSecret = process.env.WEBHOOK_SECRET;
+  const telegramToken = (process.env.TELEGRAM_TOKEN || "").trim();
+  const geminiApiKey = (process.env.GEMINI_API_KEY || "").trim();
+  const webhookSecret = (process.env.WEBHOOK_SECRET || "").trim();
 
   if (!telegramToken || !geminiApiKey) {
-    return res.status(500).send("Missing TELEGRAM_TOKEN or GEMINI_API_KEY.");
+    return res.status(500).send("Missing TELEGRAM_TOKEN or GEMINI_API_KEY");
   }
 
   if (webhookSecret) {
@@ -81,12 +79,12 @@ export default async function handler(req, res) {
   }
 
   if (!update) {
-    return res.status(400).send("Empty payload");
+    return res.status(200).json({ ok: true });
   }
 
   try {
     if (update.callback_query) {
-      await handleCallbackQuery(update.callback_query, telegramToken);
+      await handleCallback(update.callback_query, telegramToken);
       return res.status(200).json({ ok: true });
     }
 
@@ -102,15 +100,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    await handleMessage(chatId, text, telegramToken, geminiApiKey);
+    await handleText(chatId, text, telegramToken, geminiApiKey);
     return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("Handler error:", err);
+    console.error("Webhook error:", err);
     return res.status(200).json({ ok: true });
   }
 }
 
-function buildLanguageKeyboard(activeCode) {
+function buildKeyboard(activeCode) {
   const entries = Object.entries(LANGUAGES);
   const rows = [];
 
@@ -118,10 +116,9 @@ function buildLanguageKeyboard(activeCode) {
     const row = [];
     for (let j = i; j < i + 2 && j < entries.length; j++) {
       const [code, info] = entries[j];
-      const prefix = code === activeCode ? "✅ " : "";
       row.push({
-        text: `${prefix}${info.label}`,
-        callback_data: `set_lang:${code}`,
+        text: `${code === activeCode ? "✅ " : ""}${info.label}`,
+        callback_data: `lang:${code}`,
       });
     }
     rows.push(row);
@@ -130,7 +127,7 @@ function buildLanguageKeyboard(activeCode) {
   return { inline_keyboard: rows };
 }
 
-function parseLanguagePrefix(text) {
+function parsePrefix(text) {
   const match = text.match(/^\/([a-z]+)\s+([\s\S]+)$/i);
   if (match) {
     const code = match[1].toLowerCase();
@@ -141,188 +138,119 @@ function parseLanguagePrefix(text) {
   return { langCode: DEFAULT_LANG, cleanText: text };
 }
 
-async function handleCallbackQuery(callbackQuery, token) {
-  const callbackId = callbackQuery.id;
-  const data = callbackQuery.data || "";
-  const chatId = callbackQuery.message?.chat?.id;
-  const messageId = callbackQuery.message?.message_id;
+async function handleCallback(cq, token) {
+  const callbackId = cq.id;
+  const data = cq.data || "";
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
 
-  if (!data.startsWith("set_lang:")) {
-    await answerCallbackQuery(token, callbackId, "Updated.");
+  const code = data.startsWith("lang:") ? data.slice(5) : DEFAULT_LANG;
+  const lang = LANGUAGES[code] || LANGUAGES[DEFAULT_LANG];
+
+  await tgApi(token, "answerCallbackQuery", {
+    callback_query_id: callbackId,
+    text: `Selected: ${lang.label}`,
+  });
+
+  if (chatId && messageId) {
+    await tgApi(token, "editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: buildKeyboard(code),
+    });
+
+    await sendText(
+      token,
+      chatId,
+      `Language set to ${lang.label}. Ab koi bhi text bhejein (ya /mr <text>).`
+    );
+  }
+}
+
+async function handleText(chatId, text, token, apiKey) {
+  if (text === "/start" || text === "/lang") {
+    await tgApi(token, "sendMessage", {
+      chat_id: chatId,
+      text: "Translator bot ready hai. Language chunein ya seedha text bhejein (example: /mr Aaj mausam accha hai).",
+      reply_markup: buildKeyboard(DEFAULT_LANG),
+    });
     return;
   }
 
-  const chosenCode = data.replace("set_lang:", "");
-  const chosenLang = LANGUAGES[chosenCode] || LANGUAGES[DEFAULT_LANG];
-
-  await answerCallbackQuery(token, callbackId, `Selected: ${chosenLang.label}`);
-
-  if (chatId && messageId) {
-    await editMessageReplyMarkup(
+  if (text === "/help") {
+    await sendText(
       token,
       chatId,
-      messageId,
-      buildLanguageKeyboard(chosenCode)
+      "Commands: /start, /lang, /help\nPrefixes: /en, /hi, /hinglish, /mr, /ta, /te, /kn, /ml, /bn, /gu, /pa"
     );
-    await sendTelegramMessage(
-      token,
-      chatId,
-      `Target language set to ${chosenLang.label}. Send text or use /<code> <text> (for example: /mr Kal milte hain).`
-    );
+    return;
   }
-}
 
-async function handleMessage(chatId, text, token, apiKey) {
+  const { langCode, cleanText } = parsePrefix(text);
+
   try {
-    if (text === "/start" || text === "/lang") {
-      const welcomeText = [
-        "Translator bot ready.",
-        "",
-        "Send any text to translate, or tap a language button below.",
-        "Per-message override example: /mr Aaj mausam accha hai",
-      ].join("\n");
-
-      await sendTelegramMessageWithKeyboard(
-        token,
-        chatId,
-        welcomeText,
-        buildLanguageKeyboard(DEFAULT_LANG)
-      );
-      return;
-    }
-
-    if (text === "/help") {
-      const helpText = [
-        "Commands:",
-        "/start or /lang - Show language buttons",
-        "/help - Show commands",
-        "",
-        "Language codes: /en, /hi, /hinglish, /mr, /ta, /te, /kn, /ml, /bn, /gu, /pa",
-      ].join("\n");
-
-      await sendTelegramMessage(token, chatId, helpText);
-      return;
-    }
-
-    const { langCode, cleanText } = parseLanguagePrefix(text);
-    const translated = await translateText(cleanText, langCode, apiKey);
-    await sendTelegramMessage(token, chatId, translated);
+    const translated = await translateWithGemini(cleanText, langCode, apiKey);
+    await sendText(token, chatId, translated);
   } catch (err) {
-    await sendTelegramMessage(
-      token,
-      chatId,
-      "Translation mein problem aayi. Thodi der baad try karein."
-    );
+    await sendText(token, chatId, `Error: ${err.message}`);
   }
 }
 
-async function translateText(text, langCode, apiKey) {
+async function translateWithGemini(text, langCode, apiKey) {
   const target = LANGUAGES[langCode] || LANGUAGES[DEFAULT_LANG];
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const systemPrompt = [
-    "You are a precise translation engine for English and Indian languages.",
-    target.instruction,
-    "Preserve names, numbers, handles, URLs, and line breaks.",
-    "Output ONLY the translated text without explanations, notes, or quotes.",
-  ].join(" ");
+  const prompt = `${target.rule}
+Return ONLY the translated text without quotes or extra notes.
 
-  const payload = {
-    systemInstruction: {
-      parts: [{ text: systemPrompt }],
-    },
-    contents: [
-      {
-        role: "user",
-        parts: [{ text }],
-      },
-    ],
-    generationConfig: {
-      temperature: 0.2,
-    },
-  };
+Text:
+${text}`;
 
-  const res = await fetch(endpoint, {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [{ text: prompt }],
+        },
+      ],
+    }),
   });
+
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(`Gemini API failed with status ${res.status}`);
+    const apiMsg = data?.error?.message || `HTTP ${res.status}`;
+    throw new Error(apiMsg);
   }
 
-  const data = await res.json();
-  const translated =
+  const output =
     data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 
-  if (!translated) {
-    throw new Error("Empty translation output");
+  if (!output) {
+    throw new Error("Empty response from Gemini");
   }
 
-  return translated;
+  return output;
 }
 
-async function sendTelegramMessage(token, chatId, text) {
-  const chunks = splitMessage(text, 4000);
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-
-  for (const chunk of chunks) {
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: chunk,
-      }),
-    });
-  }
-}
-
-async function sendTelegramMessageWithKeyboard(token, chatId, text, replyMarkup) {
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      reply_markup: replyMarkup,
-    }),
+async function sendText(token, chatId, text) {
+  const safe = text.length > 4000 ? text.slice(0, 4000) : text;
+  await tgApi(token, "sendMessage", {
+    chat_id: chatId,
+    text: safe,
   });
 }
 
-async function answerCallbackQuery(token, callbackQueryId, text) {
-  const url = `https://api.telegram.org/bot${token}/answerCallbackQuery`;
-  await fetch(url, {
+async function tgApi(token, method, body) {
+  const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      callback_query_id: callbackQueryId,
-      text,
-      show_alert: false,
-    }),
+    body: JSON.stringify(body),
   });
-}
-
-async function editMessageReplyMarkup(token, chatId, messageId, replyMarkup) {
-  const url = `https://api.telegram.org/bot${token}/editMessageReplyMarkup`;
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: replyMarkup,
-    }),
-  });
-}
-
-function splitMessage(text, maxLength) {
-  if (text.length <= maxLength) return [text];
-  const parts = [];
-  for (let i = 0; i < text.length; i += maxLength) {
-    parts.push(text.slice(i, i + maxLength));
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Telegram ${method} failed: ${res.status} ${errText}`);
   }
-  return parts;
 }
