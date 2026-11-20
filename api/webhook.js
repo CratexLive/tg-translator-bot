@@ -330,7 +330,7 @@ const HELP_CATEGORIES = {
       "<b>Anti-Raid, Slideshow, Night/Slow Mode &amp; Tools</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
-      "• /slideshow [caption] — Reply to a photo/video album (or single photo/video) to send as a grouped slideshow.",
+      "• /slideshow [caption] — Reply to a photo/video/GIF album (5–10 items) to create a single-view button slider.",
       "• /raidmode &lt;yes/no/on/off|time&gt; — Toggle or time-box raid protection.",
       "• /autoraid &lt;number|off&gt; — Auto-enable raid mode after N joins in 20s.",
       "• /raidactiontime &lt;time&gt; — Set default raid duration.",
@@ -489,6 +489,67 @@ async function resolveSlideshowItems(chatId, repliedMsg) {
   return single ? [single] : [];
 }
 
+function buildSlideshowKeyboard(deckId, index, total) {
+  const prevIdx = (index - 1 + total) % total;
+  const nextIdx = (index + 1) % total;
+  return {
+    inline_keyboard: [
+      [
+        { text: "◀ Prev", callback_data: `slide:${deckId}:${prevIdx}` },
+        { text: `${index + 1} / ${total}`, callback_data: `slide_noop:${deckId}:${index}` },
+        { text: "Next ▶", callback_data: `slide:${deckId}:${nextIdx}` }
+      ]
+    ]
+  };
+}
+
+function formatSlideCaption(baseCaption, index, total) {
+  const header = `Slide ${index + 1} of ${total}`;
+  return baseCaption ? `${baseCaption}\n\n${header}` : header;
+}
+
+async function sendSlideshowDeck(token, chatId, items, caption, replyToMessageId) {
+  const cleanItems = items.slice(0, 10);
+  const deckId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const deckKey = `slideshow:${chatId}:${deckId}`;
+  const payload = {
+    caption: caption || "",
+    items: cleanItems.map((it) => ({ type: it.type, media: it.media })),
+  };
+  memoryStore.set(deckKey, payload);
+  await storeSet(deckKey, payload);
+
+  const first = cleanItems[0];
+  const replyMarkup = buildSlideshowKeyboard(deckId, 0, cleanItems.length);
+  const fullCaption = formatSlideCaption(caption, 0, cleanItems.length);
+
+  if (first.type === "video") {
+    return await tgApi(token, "sendVideo", {
+      chat_id: chatId,
+      video: first.media,
+      caption: fullCaption,
+      reply_markup: replyMarkup,
+      ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+    });
+  }
+  if (first.type === "animation") {
+    return await tgApi(token, "sendAnimation", {
+      chat_id: chatId,
+      animation: first.media,
+      caption: fullCaption,
+      reply_markup: replyMarkup,
+      ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+    });
+  }
+  return await tgApi(token, "sendPhoto", {
+    chat_id: chatId,
+    photo: first.media,
+    caption: fullCaption,
+    reply_markup: replyMarkup,
+    ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+  });
+}
+
 function hasRedis() {
   return Boolean(
     process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
@@ -635,7 +696,7 @@ function buildStartIntro(botUsername = "") {
       "",
       "• <b>Admin &amp; Access:</b> Promotions, custom ranks, admin cache, anonymous admin bypass &amp; user approvals",
       "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 content locks, allowlists, antiflood &amp; wildcard blocklists",
-      "• <b>Smart Automation:</b> Media/text greetings, slideshows, pin tools, purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
+      "• <b>Smart Automation:</b> Media/text greetings, single-view button slideshows, pin tools, purges, rules, filters, notes, raid/night/slow controls &amp; join auto-approval",
       "",
       "Select <b>Help</b> below to inspect every command category."
     ].join("\n"),
@@ -1073,6 +1134,48 @@ async function handleCallback(cq, token) {
       text: data.slice(6),
       show_alert: true,
     });
+    return;
+  }
+
+  if (data.startsWith("slide_noop:")) {
+    await safeTgApi(token, "answerCallbackQuery", { callback_query_id: cq.id });
+    return;
+  }
+
+  if (data.startsWith("slide:")) {
+    const [, deckId, idxRaw] = data.split(":");
+    const nextIdx = parseInt(idxRaw, 10);
+    const deckKey = `slideshow:${chatId}:${deckId}`;
+    const deck = memoryStore.get(deckKey) || (await storeGet(deckKey));
+    if (!deck || !Array.isArray(deck.items) || !deck.items.length || Number.isNaN(nextIdx)) {
+      await safeTgApi(token, "answerCallbackQuery", {
+        callback_query_id: cq.id,
+        text: "Slideshow expired.",
+        show_alert: false,
+      });
+      return;
+    }
+
+    const total = deck.items.length;
+    const targetIdx = ((nextIdx % total) + total) % total;
+    const item = deck.items[targetIdx];
+    const replyMarkup = buildSlideshowKeyboard(deckId, targetIdx, total);
+    const fullCaption = formatSlideCaption(deck.caption, targetIdx, total);
+
+    const mediaObj =
+      item.type === "video"
+        ? { type: "video", media: item.media, caption: fullCaption }
+        : item.type === "animation"
+          ? { type: "animation", media: item.media, caption: fullCaption }
+          : { type: "photo", media: item.media, caption: fullCaption };
+
+    await safeTgApi(token, "editMessageMedia", {
+      chat_id: chatId,
+      message_id: messageId,
+      media: mediaObj,
+      reply_markup: replyMarkup,
+    });
+    await safeTgApi(token, "answerCallbackQuery", { callback_query_id: cq.id });
     return;
   }
 
@@ -1701,41 +1804,13 @@ async function handleMessage(message, token, logChatId = "") {
       await safeSend(
         token,
         chatId,
-        "Reply to a photo, video, or media album (5–10 items) with /slideshow [caption]."
+        "Reply to a photo, video, GIF, or media album (5–10 items) with /slideshow [caption]."
       );
       return;
     }
     const caption = cmdArgsStr || items[0]?.caption || "";
-    const groupMedia = items.slice(0, 10).map((it, idx) => ({
-      type: it.type === "animation" ? "video" : it.type,
-      media: it.media,
-      ...(idx === 0 && caption ? { caption } : {}),
-    }));
     try {
-      if (groupMedia.length >= 2) {
-        await tgApi(token, "sendMediaGroup", {
-          chat_id: chatId,
-          media: groupMedia,
-          reply_to_message_id: message.reply_to_message.message_id,
-        });
-      } else {
-        const single = groupMedia[0];
-        if (single.type === "video") {
-          await tgApi(token, "sendVideo", {
-            chat_id: chatId,
-            video: single.media,
-            ...(caption ? { caption } : {}),
-            reply_to_message_id: message.reply_to_message.message_id,
-          });
-        } else {
-          await tgApi(token, "sendPhoto", {
-            chat_id: chatId,
-            photo: single.media,
-            ...(caption ? { caption } : {}),
-            reply_to_message_id: message.reply_to_message.message_id,
-          });
-        }
-      }
+      await sendSlideshowDeck(token, chatId, items, caption, message.reply_to_message.message_id);
     } catch (err) {
       await safeSend(token, chatId, `Slideshow failed: ${err.message}`);
     }
@@ -3291,7 +3366,7 @@ async function checkBotPermission(token, chatId, requiredPerm) {
         can_promote_members: "Promote New Admins",
       };
       return {
-        ok: `/slideshow` ? false : false,
+        ok: false,
         message: `${BOT_NAME} is missing the "${permLabels[requiredPerm] || requiredPerm}" permission.`,
       };
     }
