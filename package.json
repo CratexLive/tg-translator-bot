@@ -1,5 +1,5 @@
 {
-  "name": "telegram-gemini-translator-vercel",
+  "name": "tg-manager-bot",
   "version": "1.0.0",
   "private": true,
   "type": "module"
