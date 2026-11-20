@@ -4,6 +4,7 @@ const adminCache = new Map();
 const floodState = new Map();
 const purgeFromState = new Map();
 const raidJoinState = new Map();
+const mediaGroupIndex = new Map();
 
 const PUNISHMENT_ACTIONS = new Set(["ban", "mute", "kick", "tban", "tmute"]);
 const BLOCKLIST_ACTIONS = new Set(["nothing", "ban", "mute", "kick", "warn", "tban", "tmute"]);
@@ -326,9 +327,10 @@ const HELP_CATEGORIES = {
   "cc:c:raid_misc": {
     title: "Raid, Night & Tools",
     body: [
-      "<b>Anti-Raid, Night/Slow Mode &amp; Utilities</b>",
+      "<b>Anti-Raid, Slideshow, Night/Slow Mode &amp; Tools</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
+      "• /slideshow [caption] — Reply to a photo/video album (or single photo/video) to send as a grouped slideshow.",
       "• /raidmode &lt;yes/no/on/off|time&gt; — Toggle or time-box raid protection.",
       "• /autoraid &lt;number|off&gt; — Auto-enable raid mode after N joins in 20s.",
       "• /raidactiontime &lt;time&gt; — Set default raid duration.",
@@ -340,10 +342,10 @@ const HELP_CATEGORIES = {
       "• /id, /info [@user|id|reply], /chatinfo — Info commands.",
       "",
       "<b>Examples:</b>",
+      "• (reply to album) /slideshow Match Highlights",
       "• /raidmode 10m",
       "• /slowmode 5s",
-      "• /setnightmode 23:00 06:00",
-      "• /report Spam"
+      "• /setnightmode 23:00 06:00"
     ].join("\n")
   }
 };
@@ -401,6 +403,7 @@ export default async function handler(req, res) {
 
     const message = update.message || update.edited_message;
     if (message?.chat?.id) {
+      await recordAlbumMessage(message);
       await handleMessage(message, token, logChatId);
     }
 
@@ -409,6 +412,81 @@ export default async function handler(req, res) {
     console.error(`${BOT_NAME} top-level error:`, err);
     return res.status(200).json({ ok: true });
   }
+}
+
+function getSlideItemFromMessage(msg) {
+  if (!msg || typeof msg !== "object") return null;
+  if (Array.isArray(msg.photo) && msg.photo.length > 0) {
+    const best = msg.photo[msg.photo.length - 1];
+    if (best?.file_id) {
+      return {
+        type: "photo",
+        media: best.file_id,
+        message_id: msg.message_id,
+        caption: msg.caption || "",
+      };
+    }
+  }
+  if (msg.video?.file_id) {
+    return {
+      type: "video",
+      media: msg.video.file_id,
+      message_id: msg.message_id,
+      caption: msg.caption || "",
+    };
+  }
+  if (msg.animation?.file_id) {
+    return {
+      type: "animation",
+      media: msg.animation.file_id,
+      message_id: msg.message_id,
+      caption: msg.caption || "",
+    };
+  }
+  return null;
+}
+
+async function recordAlbumMessage(msg) {
+  const chatId = msg.chat?.id;
+  const item = getSlideItemFromMessage(msg);
+  if (!chatId || !item) return;
+
+  const msgKey = `slide_msg:${chatId}:${msg.message_id}`;
+  mediaGroupIndex.set(msgKey, item);
+  await storeSet(msgKey, item);
+
+  if (msg.media_group_id) {
+    const grpKey = `slide_grp:${chatId}:${msg.media_group_id}`;
+    const stored = (await storeGet(grpKey)) || [];
+    const mem = mediaGroupIndex.get(grpKey) || [];
+    const merged = [...stored];
+    for (const m of mem) {
+      if (!merged.some((x) => x.message_id === m.message_id)) merged.push(m);
+    }
+    if (!merged.some((x) => x.message_id === item.message_id)) {
+      merged.push(item);
+    }
+    merged.sort((a, b) => a.message_id - b.message_id);
+    const trimmed = merged.slice(0, 10);
+    mediaGroupIndex.set(grpKey, trimmed);
+    await storeSet(grpKey, trimmed);
+  }
+}
+
+async function resolveSlideshowItems(chatId, repliedMsg) {
+  if (!repliedMsg) return [];
+  if (repliedMsg.media_group_id) {
+    const grpKey = `slide_grp:${chatId}:${repliedMsg.media_group_id}`;
+    const stored = await storeGet(grpKey);
+    const mem = mediaGroupIndex.get(grpKey);
+    const list = Array.isArray(stored) && stored.length ? stored : Array.isArray(mem) ? mem : [];
+    if (list.length > 0) return list.slice(0, 10);
+  }
+  const msgKey = `slide_msg:${chatId}:${repliedMsg.message_id}`;
+  const storedSingle = await storeGet(msgKey);
+  if (storedSingle) return [storedSingle];
+  const single = getSlideItemFromMessage(repliedMsg);
+  return single ? [single] : [];
 }
 
 function hasRedis() {
@@ -557,7 +635,7 @@ function buildStartIntro(botUsername = "") {
       "",
       "• <b>Admin &amp; Access:</b> Promotions, custom ranks, admin cache, anonymous admin bypass &amp; user approvals",
       "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 content locks, allowlists, antiflood &amp; wildcard blocklists",
-      "• <b>Smart Automation:</b> Media/text greetings, pin tools, bulk purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
+      "• <b>Smart Automation:</b> Media/text greetings, slideshows, pin tools, purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
       "",
       "Select <b>Help</b> below to inspect every command category."
     ].join("\n"),
@@ -1510,7 +1588,7 @@ async function handleMessage(message, token, logChatId = "") {
     const userKnownSet = new Set([
       "start", "help", "id", "info", "chatinfo", "adminlist", "approval", "flood", "blocklist",
       "cleancommandtypes", "locks", "locktypes", "filters", "get", "notes",
-      "pinned", "rules", "warnings", "warns", "kickme", "report"
+      "pinned", "rules", "warnings", "warns", "kickme", "report", "slideshow"
     ]);
     const isAdminCmd = adminOnlySet.has(cmdName);
     const isKnown = isAdminCmd || userKnownSet.has(cmdName);
@@ -1615,6 +1693,53 @@ async function handleMessage(message, token, logChatId = "") {
     const resetSt = { count: 0, ts: [] };
     floodState.set(`${chatId}:${senderId}`, resetSt);
     await storeSet(`flood:${chatId}:${senderId}`, resetSt);
+  }
+
+  if (cmd === "/slideshow") {
+    const items = await resolveSlideshowItems(chatId, message.reply_to_message);
+    if (!items.length) {
+      await safeSend(
+        token,
+        chatId,
+        "Reply to a photo, video, or media album (5–10 items) with /slideshow [caption]."
+      );
+      return;
+    }
+    const caption = cmdArgsStr || items[0]?.caption || "";
+    const groupMedia = items.slice(0, 10).map((it, idx) => ({
+      type: it.type === "animation" ? "video" : it.type,
+      media: it.media,
+      ...(idx === 0 && caption ? { caption } : {}),
+    }));
+    try {
+      if (groupMedia.length >= 2) {
+        await tgApi(token, "sendMediaGroup", {
+          chat_id: chatId,
+          media: groupMedia,
+          reply_to_message_id: message.reply_to_message.message_id,
+        });
+      } else {
+        const single = groupMedia[0];
+        if (single.type === "video") {
+          await tgApi(token, "sendVideo", {
+            chat_id: chatId,
+            video: single.media,
+            ...(caption ? { caption } : {}),
+            reply_to_message_id: message.reply_to_message.message_id,
+          });
+        } else {
+          await tgApi(token, "sendPhoto", {
+            chat_id: chatId,
+            photo: single.media,
+            ...(caption ? { caption } : {}),
+            reply_to_message_id: message.reply_to_message.message_id,
+          });
+        }
+      }
+    } catch (err) {
+      await safeSend(token, chatId, `Slideshow failed: ${err.message}`);
+    }
+    return;
   }
 
   if (cmd === "/start") {
@@ -3166,7 +3291,7 @@ async function checkBotPermission(token, chatId, requiredPerm) {
         can_promote_members: "Promote New Admins",
       };
       return {
-        ok: false,
+        ok: `/slideshow` ? false : false,
         message: `${BOT_NAME} is missing the "${permLabels[requiredPerm] || requiredPerm}" permission.`,
       };
     }
