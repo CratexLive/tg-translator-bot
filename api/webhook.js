@@ -29,61 +29,318 @@ const ALLOWLISTABLE_LOCKS = new Set([
 ]);
 
 const HELP_CATEGORIES = {
-  "cc:h:admin": {
-    title: "Admin & Approval",
+  "cc:c:admin": {
+    title: "Admin",
     body: [
-      "<b>Admin & Approval</b>",
+      "<b>Admin Management</b>",
       "",
-      "• /promote [@user|id|reply] — Promote member to admin",
-      "• /demote [@user|id|reply] — Demote administrator",
-      "• /title [@user|id|reply] &lt;title&gt; — Set custom admin rank",
-      "• /adminlist — List chat admins and titles",
-      "• /admincache — Refresh cached admin list",
-      "• /anonadmin &lt;on/off&gt; — Allow anonymous admin bypass",
-      "• /adminerror &lt;on/off&gt; — Toggle non-admin warnings",
-      "• /approval, /approve, /unapprove, /approved, /unapproveall — Bypass locks, flood &amp; blocklists"
+      "<b>Commands &amp; Usage:</b>",
+      "• /promote [@user|id|reply] — Promote a user to group admin.",
+      "• /demote [@user|id|reply] — Demote an admin to regular member.",
+      "• /title [@user|id|reply] &lt;title&gt; — Set custom admin title (max 16 chars).",
+      "• /adminlist — Show all group admins and custom titles.",
+      "• /admincache — Force refresh cached admin list.",
+      "• /anonadmin &lt;yes/no/on/off&gt; — Allow anonymous admins to bypass checks.",
+      "• /adminerror &lt;yes/no/on/off&gt; — Show or hide non-admin error replies.",
+      "",
+      "<b>Examples:</b>",
+      "• /promote @player 10",
+      "• /title @player 10 Mod",
+      "• /anonadmin on"
     ].join("\n")
   },
-  "cc:h:mod": {
-    title: "Bans, Mutes & Warns",
+  "cc:c:approval": {
+    title: "Approval",
     body: [
-      "<b>Moderation &amp; Warnings</b>",
+      "<b>User Approvals</b>",
       "",
-      "• /ban, /dban, /sban, /tban &lt;time&gt; [reason] — Ban variants",
-      "• /unban [@user|id|reply] — Restore banned user",
-      "• /mute, /dmute, /smute, /tmute &lt;time&gt; [reason] — Mute variants",
-      "• /unmute [@user|id|reply] — Restore send permissions",
-      "• /kick, /dkick, /skick [reason], /kickme — Kick &amp; self-kick",
-      "• /warn, /dwarn, /swarn [reason] — Issue warnings",
-      "• /warns, /rmwarn, /resetwarn, /resetallwarns — Manage warnings",
-      "• /warnings, /warnmode, /warnlimit, /warntime — Warning policy"
+      "<b>Commands &amp; Usage:</b>",
+      "• /approval [@user|id|reply] — Check whether a user is approved.",
+      "• /approve [@user|id|reply] — Exempt user from locks, blocklists, and flood.",
+      "• /unapprove [@user|id|reply] — Remove approval exemption from user.",
+      "• /approved — List all approved user IDs in the chat.",
+      "• /unapproveall — Revoke approval from all users in the chat.",
+      "",
+      "<b>Examples:</b>",
+      "• /approve @trusted_user",
+      "• /approval @trusted_user",
+      "• /unapproveall"
     ].join("\n")
   },
-  "cc:h:prot": {
-    title: "Locks, Flood & Raid",
+  "cc:c:bans": {
+    title: "Bans",
     body: [
-      "<b>Protection &amp; Anti-Raid</b>",
+      "<b>Ban Commands</b>",
       "",
-      "• /lock &lt;type(s)&gt; [### reason {action}], /unlock, /locks [list], /locktypes, /lockwarns",
-      "• /allowlist, /rmallowlist, /rmallowlistall — Allowlist channels, links &amp; packs",
-      "• /setflood &lt;n|off&gt;, /setfloodtimer &lt;n&gt; &lt;time|off&gt;, /floodmode, /clearflood, /flood",
-      "• /addblocklist, /rmblocklist, /unblocklistall, /blocklist, /blocklistmode, /blocklistdelete, /setblocklistreason, /resetblocklistreason",
-      "• /raidmode &lt;on/off|time&gt;, /autoraid &lt;n|off&gt;, /raidactiontime &lt;time&gt;",
-      "• /slowmode &lt;time|off&gt;, /nightmode &lt;on/off&gt;, /setnightmode &lt;HH:MM&gt; &lt;HH:MM&gt;"
+      "<b>Commands &amp; Usage:</b>",
+      "• /ban [@user|id|reply] [reason] — Permanently ban a user.",
+      "• /dban [reason] — Delete replied message and ban sender.",
+      "• /sban [reason] — Silently ban (deletes command/replied message).",
+      "• /tban [@user|id|reply] &lt;time&gt; [reason] — Temporarily ban (s/m/h/d/w).",
+      "• /unban [@user|id|reply] — Lift a ban or restriction on a user.",
+      "",
+      "<b>Examples:</b>",
+      "• /ban @spammer Link spam",
+      "• /dban Promotional link",
+      "• /tban @user 2d Match spoiler"
     ].join("\n")
   },
-  "cc:h:engage": {
-    title: "Greetings, Pin & Purges",
+  "cc:c:mutes": {
+    title: "Mutes",
     body: [
-      "<b>Greetings, Pin, Purges &amp; Reports</b>",
+      "<b>Mute Commands</b>",
       "",
-      "• /welcome &lt;on/off|noformat&gt;, /setwelcome [text|reply media], /resetwelcome, /cleanwelcome",
-      "• /goodbye &lt;on/off|noformat&gt;, /setgoodbye [text|reply media], /resetgoodbye",
-      "• /pinned, /pin [loud|notify], /permapin &lt;text&gt;, /unpin [reply], /unpinall, /antichannelpin, /cleanlinked",
-      "• /purge [X], /spurge [X], /del, /purgefrom, /purgeto",
-      "• /rules [noformat], /setrules, /privaterules, /resetrules, /setrulesbutton, /resetrulesbutton",
-      "• /filter, /filters, /stop, /save, /get, #note, /notes, /clear",
-      "• /report (reply) or @admin, /reports &lt;on/off&gt;, /info, /chatinfo, /cleancommand, /keepcommand, /cleancommandtypes"
+      "<b>Commands &amp; Usage:</b>",
+      "• /mute [@user|id|reply] [reason] — Restrict user from sending messages.",
+      "• /dmute [reason] — Delete replied message and mute sender.",
+      "• /smute [reason] — Silently mute user.",
+      "• /tmute [@user|id|reply] &lt;time&gt; [reason] — Temporarily mute user.",
+      "• /unmute [@user|id|reply] — Restore user messaging permissions.",
+      "",
+      "<b>Examples:</b>",
+      "• /mute @user Flood",
+      "• /tmute @user 30m Cool down",
+      "• /dmute Off-topic spam"
+    ].join("\n")
+  },
+  "cc:c:kicks": {
+    title: "Kicks",
+    body: [
+      "<b>Kick Commands</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /kick [@user|id|reply] [reason] — Remove user from group (can rejoin).",
+      "• /dkick [reason] — Delete replied message and kick sender.",
+      "• /skick [reason] — Silently kick user.",
+      "• /kickme — Remove yourself from the group.",
+      "",
+      "<b>Examples:</b>",
+      "• /kick @user Rule violation",
+      "• /dkick Duplicate post",
+      "• /kickme"
+    ].join("\n")
+  },
+  "cc:c:warnings": {
+    title: "Warnings",
+    body: [
+      "<b>Warnings System</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /warn [@user|id|reply] [reason] — Issue a warning to user.",
+      "• /dwarn [reason] — Delete replied message and warn sender.",
+      "• /swarn [reason] — Silently issue a warning.",
+      "• /warns [@user|id|reply] — View warnings for a user.",
+      "• /rmwarn [@user|id|reply] — Remove user's latest warning.",
+      "• /resetwarn [@user|id|reply] — Clear all warnings for a user.",
+      "• /resetallwarns — Clear all warnings across the chat.",
+      "• /warnings — View current warning limit, mode, and expiry.",
+      "• /warnmode &lt;ban/mute/kick/tban/tmute&gt; [time] — Set limit action.",
+      "• /warnlimit &lt;number&gt; — Set max warnings before action.",
+      "• /warntime &lt;time|off&gt; — Set warning expiration duration.",
+      "",
+      "<b>Examples:</b>",
+      "• /warn @user Avoid abusive language",
+      "• /warnlimit 5",
+      "• /warnmode mute 1h",
+      "• /warntime 4w"
+    ].join("\n")
+  },
+  "cc:c:locks": {
+    title: "Locks & Allowlist",
+    body: [
+      "<b>Content Locks &amp; Allowlist (51 Types)</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /lock &lt;type(s)&gt; [### reason {action}] — Lock types or set custom rule.",
+      "• /unlock &lt;type(s)&gt; — Unlock one or more content types.",
+      "• /locks [list] — Show active locks or list all lock types.",
+      "• /locktypes — Display all 51 supported lock types.",
+      "• /lockwarns &lt;yes/no/on/off&gt; — Warn users when locked items are sent.",
+      "• /allowlist [item|emojipack:&lt;&gt;] — Allowlist channel, link, pack, or view list.",
+      "• /rmallowlist &lt;item&gt; — Remove an entry from allowlist.",
+      "• /rmallowlistall — Clear all allowlisted entries.",
+      "",
+      "<b>Examples:</b>",
+      "• /lock sticker photo gif video",
+      "• /lock invitelink ### No chat promos {ban}",
+      "• /allowlist @CricxCrate"
+    ].join("\n")
+  },
+  "cc:c:flood": {
+    title: "Antiflood",
+    body: [
+      "<b>Antiflood Protection</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /flood — View current antiflood configuration.",
+      "• /setflood &lt;number/off&gt; — Trigger after N consecutive messages.",
+      "• /setfloodtimer &lt;count&gt; &lt;time|off&gt; — Trigger on N messages in time window.",
+      "• /floodmode &lt;ban/mute/kick/tban/tmute&gt; [time] — Set flood action.",
+      "• /clearflood &lt;yes/no/on/off&gt; — Delete flooding messages on trigger.",
+      "",
+      "<b>Examples:</b>",
+      "• /setflood 6",
+      "• /setfloodtimer 8 10s",
+      "• /floodmode tmute 15m",
+      "• /clearflood on"
+    ].join("\n")
+  },
+  "cc:c:blocklist": {
+    title: "Blocklists",
+    body: [
+      "<b>Keyword &amp; Wildcard Blocklists</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /addblocklist &lt;trigger&gt; [reason] — Add word, \"phrase\", or * / ? / ** wildcard.",
+      "• /rmblocklist &lt;trigger&gt; — Remove a blocklist trigger.",
+      "• /unblocklistall — Remove all blocklists (group creator only).",
+      "• /blocklist — Show triggers, action mode, and delete flag.",
+      "• /blocklistmode &lt;nothing/ban/mute/kick/warn/tban/tmute&gt; — Set action.",
+      "• /blocklistdelete &lt;yes/no/on/off&gt; — Delete matched messages or keep them.",
+      "• /setblocklistreason &lt;text&gt; — Set default blocklist reason.",
+      "• /resetblocklistreason — Clear default blocklist reason.",
+      "",
+      "<b>Examples:</b>",
+      "• /addblocklist scammer No spam",
+      "• /addblocklist \"free coins\" Spam link",
+      "• /blocklistmode warn"
+    ].join("\n")
+  },
+  "cc:c:filters": {
+    title: "Filters",
+    body: [
+      "<b>Auto-Reply Filters</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /filter &lt;trigger&gt; &lt;reply&gt; — Create trigger (supports exact:, prefix:, (a, b), %%%, fillings &amp; buttons).",
+      "• /filters — List active filter triggers in chat.",
+      "• /stop &lt;trigger&gt; — Delete a filter trigger.",
+      "",
+      "<b>Examples:</b>",
+      "• /filter squad Check pinned squad list!",
+      "• /filter exact:hi Hello {first}!",
+      "• /filter (live, stream) Watch on [Portal](buttonurl://example.com)"
+    ].join("\n")
+  },
+  "cc:c:notes": {
+    title: "Notes",
+    body: [
+      "<b>Saved Chat Notes</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /save &lt;name&gt; &lt;content&gt; — Save a note under a short name.",
+      "• /get &lt;name&gt; [noformat] — Fetch saved note (or raw text).",
+      "• #&lt;name&gt; — Quick shortcut to send saved note.",
+      "• /notes — List all saved note names.",
+      "• /clear &lt;name&gt; — Delete a saved note.",
+      "",
+      "<b>Examples:</b>",
+      "• /save schedule Match starts at 7:30 PM IST",
+      "• #schedule",
+      "• /clear schedule"
+    ].join("\n")
+  },
+  "cc:c:greetings": {
+    title: "Greetings",
+    body: [
+      "<b>Welcome &amp; Goodbye Messages</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /welcome &lt;yes/no/on/off|noformat&gt; — Toggle welcome or view raw template.",
+      "• /setwelcome [text|reply media] — Set welcome text/fillings/buttons/media.",
+      "• /resetwelcome — Reset welcome message and media to default.",
+      "• /cleanwelcome &lt;yes/no/on/off&gt; — Auto-delete old welcome after 5m or on new join.",
+      "• /goodbye &lt;yes/no/on/off|noformat&gt; — Toggle goodbye (groups &lt;= 50 members).",
+      "• /setgoodbye [text|reply media] — Set goodbye text/fillings/buttons/media.",
+      "• /resetgoodbye — Reset goodbye message and media to default.",
+      "",
+      "<b>Examples:</b>",
+      "• /setwelcome Welcome {first} to {chatname}! {rules}",
+      "• /welcome on",
+      "• /cleanwelcome on"
+    ].join("\n")
+  },
+  "cc:c:pin": {
+    title: "Pin & Linked",
+    body: [
+      "<b>Pin &amp; Linked Channel Controls</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /pinned — Jump to the current pinned message.",
+      "• /pin [loud|notify] — Pin replied message (silent by default unless loud/notify).",
+      "• /permapin &lt;text&gt; — Send a formatted message and pin it.",
+      "• /unpin [reply] — Unpin current or replied pinned message.",
+      "• /unpinall — Unpin all pinned messages in chat.",
+      "• /antichannelpin &lt;yes/no/on/off&gt; — Block auto-pinning from linked channel.",
+      "• /cleanlinked &lt;yes/no/on/off&gt; — Delete messages posted by linked channel.",
+      "",
+      "<b>Examples:</b>",
+      "• /pin loud",
+      "• /permapin Match Thread Live! {rules}",
+      "• /antichannelpin on"
+    ].join("\n")
+  },
+  "cc:c:purges": {
+    title: "Purges & Cleanup",
+    body: [
+      "<b>Message Purges &amp; Command Cleanup</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /purge [X] — Delete messages from replied message to now (or next X).",
+      "• /spurge [X] — Purge silently without sending confirmation.",
+      "• /del — Delete replied message (and command message).",
+      "• /purgefrom — Mark replied message as purge start point.",
+      "• /purgeto — Purge from /purgefrom marker to replied/current message.",
+      "• /cleancommand &lt;all/admin/user/other&gt; — Auto-delete command types.",
+      "• /keepcommand &lt;type(s)&gt; — Stop auto-deleting command types.",
+      "• /cleancommandtypes — List available command clean categories.",
+      "",
+      "<b>Examples:</b>",
+      "• /purge",
+      "• /purge 10",
+      "• /cleancommand admin user"
+    ].join("\n")
+  },
+  "cc:c:rules": {
+    title: "Rules",
+    body: [
+      "<b>Chat Rules</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /rules [noformat] — Show group rules or raw unformatted text.",
+      "• /setrules &lt;text&gt; — Set chat rules with fillings and buttons.",
+      "• /privaterules &lt;yes/no/on/off&gt; — Send rules via private DM link button.",
+      "• /resetrules — Clear chat rules.",
+      "• /setrulesbutton &lt;label&gt; — Set custom button label for {rules}.",
+      "• /resetrulesbutton — Reset {rules} button label to default.",
+      "",
+      "<b>Examples:</b>",
+      "• /setrules 1. No spam 2. Respect members",
+      "• /setrulesbutton Read Chat Rules",
+      "• /privaterules on"
+    ].join("\n")
+  },
+  "cc:c:raid_misc": {
+    title: "Raid, Night & Tools",
+    body: [
+      "<b>Anti-Raid, Night/Slow Mode &amp; Utilities</b>",
+      "",
+      "<b>Commands &amp; Usage:</b>",
+      "• /raidmode &lt;yes/no/on/off|time&gt; — Toggle or time-box anti-raid join kicks.",
+      "• /autoraid &lt;number|off&gt; — Auto-trigger raid mode after N joins in 20s.",
+      "• /raidactiontime &lt;time&gt; — Set default raid mode duration.",
+      "• /slowmode &lt;time|off&gt; — Set group message slowmode delay.",
+      "• /nightmode &lt;yes/no/on/off&gt; — Toggle or view night restriction window (UTC).",
+      "• /setnightmode &lt;HH:MM&gt; &lt;HH:MM&gt; — Set start and end time in UTC.",
+      "• /report [reason] or @admin — Report replied message to group admins.",
+      "• /reports &lt;yes/no/on/off&gt; — Enable or disable reports in chat.",
+      "• /id, /info [@user|id|reply], /chatinfo — Inspect IDs, user, and group info.",
+      "",
+      "<b>Examples:</b>",
+      "• /raidmode 15m",
+      "• /slowmode 10s",
+      "• /setnightmode 23:00 06:00",
+      "• /report Spam message"
     ].join("\n")
   }
 };
@@ -290,15 +547,16 @@ function buildStartIntro(botUsername = "") {
       "",
       "Fast serverless group management with persistent configuration, granular enforcement, and zero bloat.",
       "",
-      "• <b>Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, antiflood, 51 content locks, allowlists &amp; blocklists",
-      "• <b>Automation:</b> Welcomes/goodbyes with media &amp; fillings, pin tools, purges, rules, filters, notes, raid/night/slow controls &amp; auto-approval",
+      "• <b>Access &amp; Admin:</b> Promotions, titles, admin cache, anonymous admin bypass &amp; approvals",
+      "• <b>Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 locks, allowlists, flood &amp; blocklists",
+      "• <b>Automation:</b> Welcomes/goodbyes with media &amp; fillings, pins, purges, rules, filters, notes, raid/night/slow controls &amp; auto-approval",
       "",
-      "Select <b>Commands</b> below to explore modules."
+      "Tap <b>Help</b> below to open all command categories."
     ].join("\n"),
     replyMarkup: {
       inline_keyboard: [
         [
-          { text: "Commands", callback_data: "cc:help_menu" },
+          { text: "Help", callback_data: "cc:help_menu" },
           { text: "Add to Group", url: addLink }
         ]
       ]
@@ -310,14 +568,45 @@ function buildHelpMenuKeyboard() {
   return {
     inline_keyboard: [
       [
-        { text: "Admin & Approval", callback_data: "cc:h:admin" },
-        { text: "Bans, Mutes & Warns", callback_data: "cc:h:mod" }
+        { text: "Admin", callback_data: "cc:c:admin" },
+        { text: "Approval", callback_data: "cc:c:approval" },
+        { text: "Bans", callback_data: "cc:c:bans" }
       ],
       [
-        { text: "Locks, Flood & Raid", callback_data: "cc:h:prot" },
-        { text: "Greetings, Pin & Purges", callback_data: "cc:h:engage" }
+        { text: "Mutes", callback_data: "cc:c:mutes" },
+        { text: "Kicks", callback_data: "cc:c:kicks" },
+        { text: "Warnings", callback_data: "cc:c:warnings" }
       ],
       [
+        { text: "Locks", callback_data: "cc:c:locks" },
+        { text: "Antiflood", callback_data: "cc:c:flood" },
+        { text: "Blocklists", callback_data: "cc:c:blocklist" }
+      ],
+      [
+        { text: "Filters", callback_data: "cc:c:filters" },
+        { text: "Notes", callback_data: "cc:c:notes" },
+        { text: "Greetings", callback_data: "cc:c:greetings" }
+      ],
+      [
+        { text: "Pin & Linked", callback_data: "cc:c:pin" },
+        { text: "Purges", callback_data: "cc:c:purges" },
+        { text: "Rules", callback_data: "cc:c:rules" }
+      ],
+      [
+        { text: "Raid, Night & Tools", callback_data: "cc:c:raid_misc" }
+      ],
+      [
+        { text: "Overview", callback_data: "cc:intro" }
+      ]
+    ]
+  };
+}
+
+function buildCategoryReturnKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        { text: "Help", callback_data: "cc:help_menu" },
         { text: "Overview", callback_data: "cc:intro" }
       ]
     ]
@@ -612,7 +901,7 @@ async function handleCallback(cq, token) {
   if (!chatId) return;
 
   if (data === "cc:help_menu") {
-    const menuText = `<b>${BOT_NAME} Commands</b>\n\nSelect a module:`;
+    const menuText = `<b>${BOT_NAME} Help Menu</b>\n\nChoose a command category:`;
     if (messageId) {
       await safeTgApi(token, "editMessageText", {
         chat_id: chatId,
@@ -646,24 +935,16 @@ async function handleCallback(cq, token) {
 
   if (HELP_CATEGORIES[data]) {
     const cat = HELP_CATEGORIES[data];
-    const backMarkup = {
-      inline_keyboard: [
-        [
-          { text: "Modules", callback_data: "cc:help_menu" },
-          { text: "Overview", callback_data: "cc:intro" }
-        ]
-      ]
-    };
     if (messageId) {
       await safeTgApi(token, "editMessageText", {
         chat_id: chatId,
         message_id: messageId,
         text: cat.body,
         parse_mode: "HTML",
-        reply_markup: backMarkup,
+        reply_markup: buildCategoryReturnKeyboard(),
       });
     } else {
-      await safeSend(token, chatId, cat.body, backMarkup, undefined, false, "HTML");
+      await safeSend(token, chatId, cat.body, buildCategoryReturnKeyboard(), undefined, false, "HTML");
     }
   }
 }
@@ -988,7 +1269,7 @@ async function handleMessage(message, token, logChatId = "") {
       await safeSend(
         token,
         chatId,
-        `<b>${BOT_NAME} Commands</b>\n\nSelect a module:`,
+        `<b>${BOT_NAME} Help Menu</b>\n\nChoose a command category:`,
         buildHelpMenuKeyboard(),
         undefined,
         false,
@@ -1110,13 +1391,13 @@ async function handleMessage(message, token, logChatId = "") {
 
   if (cmdName && cfg.cleanCommands.length > 0) {
     const adminOnlySet = new Set([
-      "promote", "demote", "title", "admincache", "anonadmin", "adminerror",
+      "promote", "demote", "title", "admincache", "anonadmin", "adminerror", "reports",
       "approve", "unapprove", "approved", "unapproveall",
       "setflood", "setfloodtimer", "floodmode", "clearflood",
       "raidmode", "autoraid", "raidactiontime", "slowmode", "nightmode", "setnightmode",
       "addblocklist", "rmblocklist", "unblocklistall", "blocklistmode",
       "blocklistdelete", "setblocklistreason", "resetblocklistreason",
-      "cleancommand", "keepcommand", "reports",
+      "cleancommand", "keepcommand",
       "lock", "unlock", "lockwarns", "allowlist", "rmallowlist", "rmallowlistall",
       "filter", "stop", "save", "clear",
       "welcome", "goodbye", "setwelcome", "resetwelcome", "setgoodbye", "resetgoodbye", "cleanwelcome",
@@ -1240,7 +1521,7 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      `<b>${BOT_NAME} Commands</b>\n\nSelect a module:`,
+      `<b>${BOT_NAME} Help Menu</b>\n\nChoose a command category:`,
       buildHelpMenuKeyboard(),
       undefined,
       false,
@@ -1484,7 +1765,7 @@ async function handleMessage(message, token, logChatId = "") {
   }
 
   const adminCommands = new Set([
-    "/promote", "/demote", "/title", "/admincache", "/anonadmin", "/adminerror", "reports",
+    "/promote", "/demote", "/title", "/admincache", "/anonadmin", "/adminerror", "/reports",
     "/approve", "/unapprove", "/approved", "/unapproveall",
     "/setflood", "/setfloodtimer", "/floodmode", "/clearflood",
     "/raidmode", "/autoraid", "/raidactiontime", "/slowmode", "/nightmode", "/setnightmode",
