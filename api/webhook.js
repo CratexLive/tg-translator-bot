@@ -1065,6 +1065,14 @@ function detectLockMatches(msg) {
   }
   if (msg.sender_chat && msg.sender_chat.id === msg.chat.id) matches.add("anonchannel");
   if (msg.audio) matches.add("audio");
+  if (msg.voice) {
+    matches.add("voice");
+    matches.add("audio");
+  }
+  if (msg.video_note) {
+    matches.add("videonote");
+    matches.add("audio");
+  }
   if (msg.new_chat_members?.some((m) => m.is_bot)) matches.add("bot");
   if (msg.reply_markup?.inline_keyboard) matches.add("button");
   if (msg.checklist) matches.add("checklist");
@@ -1078,8 +1086,6 @@ function detectLockMatches(msg) {
   if (msg.poll) matches.add("poll");
   if (msg.story) matches.add("forwardstory");
   if (msg.video) matches.add("video");
-  if (msg.video_note) matches.add("videonote");
-  if (msg.voice) matches.add("voice");
   if (msg.web_app_data) matches.add("widget");
   if (msg.external_reply) matches.add("externalreply");
   if (msg.dice) {
