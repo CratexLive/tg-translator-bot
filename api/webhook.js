@@ -190,11 +190,35 @@ async function handleText(chatId, text, token, apiKey) {
   const { langCode, cleanText } = parsePrefix(text);
 
   try {
-    const translated = await translateWithGemini(cleanText, langCode, apiKey);
+    const translated = await translateWithRetry(cleanText, langCode, apiKey);
     await sendText(token, chatId, translated);
   } catch (err) {
     await sendText(token, chatId, `Error: ${err.message}`);
   }
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function translateWithRetry(text, langCode, apiKey, retries = 2) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await translateWithGemini(text, langCode, apiKey);
+    } catch (err) {
+      lastError = err;
+      const isTemporary =
+        err.message.includes("high demand") ||
+        err.message.includes("503") ||
+        err.message.includes("429") ||
+        err.message.includes("overloaded");
+
+      if (!isTemporary || attempt === retries) {
+        throw err;
+      }
+      await sleep(1000 * (attempt + 1));
+    }
+  }
+  throw lastError;
 }
 
 async function translateWithGemini(text, langCode, apiKey) {
