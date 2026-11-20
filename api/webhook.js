@@ -1,5 +1,3 @@
-import crypto from "crypto";
-
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
 const TELEGRAM_API = BOT_TOKEN ? `https://api.telegram.org/bot${BOT_TOKEN}` : "";
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "";
@@ -96,31 +94,39 @@ function getDefaultChatConfig() {
 }
 
 async function kvGet(key) {
-  if (UPSTASH_URL && UPSTASH_TOKEN) {
-    const res = await fetch(`${UPSTASH_URL}/get/${encodeURIComponent(key)}`, {
-      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.result !== null && data.result !== undefined) {
-        return typeof data.result === "string" ? JSON.parse(data.result) : data.result;
+  try {
+    if (UPSTASH_URL && UPSTASH_TOKEN) {
+      const res = await fetch(`${UPSTASH_URL}/get/${encodeURIComponent(key)}`, {
+        headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.result !== null && data.result !== undefined) {
+          return typeof data.result === "string" ? JSON.parse(data.result) : data.result;
+        }
       }
     }
+  } catch (err) {
+    console.error("Redis get fallback to memory:", err.message);
   }
-  return memoryStore.get(key) ?? null;
+  return memoryStore.has(key) ? memoryStore.get(key) : null;
 }
 
 async function kvSet(key, value) {
   memoryStore.set(key, value);
-  if (UPSTASH_URL && UPSTASH_TOKEN) {
-    await fetch(`${UPSTASH_URL}/set/${encodeURIComponent(key)}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${UPSTASH_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(JSON.stringify(value))
-    });
+  try {
+    if (UPSTASH_URL && UPSTASH_TOKEN) {
+      await fetch(`${UPSTASH_URL}/set/${encodeURIComponent(key)}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${UPSTASH_TOKEN}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(JSON.stringify(value))
+      });
+    }
+  } catch (err) {
+    console.error("Redis set fallback to memory:", err.message);
   }
 }
 
@@ -128,7 +134,7 @@ async function getChatConfig(chatId) {
   const key = `chat:${chatId}`;
   const existing = await kvGet(key);
   const base = getDefaultChatConfig();
-  if (!existing) return base;
+  if (!existing || typeof existing !== "object") return base;
   return {
     ...base,
     ...existing,
@@ -145,13 +151,19 @@ async function saveChatConfig(chatId, cfg) {
 }
 
 async function tg(method, payload = {}) {
-  if (!TELEGRAM_API) return null;
-  const res = await fetch(`${TELEGRAM_API}/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  return res.json();
+  try {
+    if (!TELEGRAM_API) return null;
+    const res = await fetch(`${TELEGRAM_API}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error(`Telegram API ${method} failed:`, err.message);
+    return null;
+  }
 }
 
 function parseBoolFlag(val) {
@@ -176,6 +188,13 @@ function parseDuration(str) {
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function wildcardToRegex(pattern, allowSpaces = false) {
@@ -205,24 +224,17 @@ function applyFillings(text, user, chat, extra = {}) {
   const id = user?.id ?? "";
   const chatName = chat?.title || "Group";
   let out = text
-    .replace(/\{first\}/g, first)
-    .replace(/\{last\}/g, last)
-    .replace(/\{fullname\}/g, full)
-    .replace(/\{username\}/g, username)
-    .replace(/\{id\}/g, String(id))
+    .replace(/\{first\}/g, escapeHtml(first))
+    .replace(/\{last\}/g, escapeHtml(last))
+    .replace(/\{fullname\}/g, escapeHtml(full))
+    .replace(/\{username\}/g, escapeHtml(username))
+    .replace(/\{id\}/g, escapeHtml(String(id)))
     .replace(/\{mention\}/g, id ? `<a href="tg://user?id=${id}">${escapeHtml(first)}</a>` : escapeHtml(first))
-    .replace(/\{chatname\}/g, chatName);
+    .replace(/\{chatname\}/g, escapeHtml(chatName));
   if (extra.rulesButton) {
-    out = out.replace(/\{rules\}/g, extra.rulesButton);
+    out = out.replace(/\{rules\}/g, escapeHtml(extra.rulesButton));
   }
   return out;
-}
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }
 
 function extractButtonsFromText(raw) {
@@ -257,6 +269,7 @@ async function getChatAdmins(chatId, force = false) {
 }
 
 async function isUserAdmin(chatId, userId, senderChat = null, cfg = null) {
+  if (!userId) return false;
   if (senderChat && senderChat.id === chatId && cfg?.anonAdmin) {
     return true;
   }
@@ -432,8 +445,7 @@ function detectLockMatches(msg) {
     matches.add("forward");
     const t = msg.forward_origin.type;
     if (t === "user" || t === "hidden_user") matches.add("forwarduser");
-    else if (t === "channel") matches.add("forwardchannel");
-    else if (t === "chat") matches.add("forwardchannel");
+    else if (t === "channel" || t === "chat") matches.add("forwardchannel");
   }
 
   if (text) {
@@ -528,7 +540,7 @@ function matchBlocklistTrigger(trigger, text) {
   return tokens.some((tok) => regex.test(tok));
 }
 
-function matchFilterTrigger(triggerRaw, text, isAdmin, isBot) {
+function matchFilterTrigger(triggerRaw, text) {
   let trig = triggerRaw.trim();
   let mode = "contains";
   if (/^exact:/i.test(trig)) {
@@ -579,7 +591,7 @@ function parseFilterInput(rawArgsText) {
 }
 
 async function sendFilterOrNoteResponse(chatId, msg, rawContent, isNoFormat = false, isForce = false) {
-  let content = rawContent;
+  const content = rawContent;
   const hasAdminFlag = /\{admin\}/i.test(content);
   const hasUserFlag = /\{user\}/i.test(content);
   const hasProtect = /\{protect\}/i.test(content);
@@ -1053,8 +1065,8 @@ async function handleMessage(msg) {
       case "approval": {
         const { user } = await resolveTargetUser(msg, cmdArgs);
         const target = user || sender;
-        const status = isApproved(target.id, cfg) ? "approved" : "not approved";
-        await tg("sendMessage", { chat_id: chatId, text: `${target.first_name} (${target.id}) is ${status}.` });
+        const status = target && isApproved(target.id, cfg) ? "approved" : "not approved";
+        await tg("sendMessage", { chat_id: chatId, text: `${target?.first_name || "User"} (${target?.id || ""}) is ${status}.` });
         return;
       }
       case "approve": {
@@ -1791,7 +1803,7 @@ async function handleMessage(msg) {
     for (const flt of cfg.filters) {
       const allowBot = /\{allow_bot\}/i.test(flt.content);
       if (sender?.is_bot && !allowBot) continue;
-      if (matchFilterTrigger(flt.trigger, queryText, userIsAdmin, Boolean(sender?.is_bot))) {
+      if (matchFilterTrigger(flt.trigger, queryText)) {
         const sent = await sendFilterOrNoteResponse(chatId, msg, flt.content, isNoFormat, isForce);
         if (sent) break;
       }
@@ -1827,6 +1839,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       bot: "CricxCrate",
+      hasToken: Boolean(BOT_TOKEN),
       allowed_updates: ALLOWED_UPDATES
     });
   }
