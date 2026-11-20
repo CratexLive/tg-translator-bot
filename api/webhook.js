@@ -1,5 +1,31 @@
 const BOT_NAME = "CricxCrate";
 const memoryStore = new Map();
+const adminCache = new Map();
+const floodState = new Map();
+const purgeFromState = new Map();
+
+const PUNISHMENT_ACTIONS = new Set(["ban", "mute", "kick", "tban", "tmute"]);
+const BLOCKLIST_ACTIONS = new Set(["nothing", "ban", "mute", "kick", "warn", "tban", "tmute"]);
+const CLEAN_CMD_TYPES = new Set(["all", "admin", "user", "other"]);
+
+const LOCK_TYPES = [
+  "all", "album", "anonchannel", "audio", "bot", "botlink", "button",
+  "cashtag", "checklist", "cjk", "collage", "command", "comment", "contact",
+  "cyrillic", "document", "email", "emoji", "emojicustom", "emojigame",
+  "emojionly", "externalreply", "forward", "forwardbot", "forwardchannel",
+  "forwardstory", "forwarduser", "game", "gif", "guestbot", "inline",
+  "invitelink", "location", "outsidereaction", "phone", "photo", "poll",
+  "reaction", "richmessage", "rtl", "slideshow", "spoiler", "sticker",
+  "stickeranimated", "stickerpremium", "text", "url", "video", "videonote",
+  "voice", "widget", "zalgo"
+];
+
+const ALLOWLISTABLE_LOCKS = new Set([
+  "anonchannel", "botlink", "cashtag", "command", "externalreply",
+  "forward", "forwardbot", "forwardchannel", "forwardstory", "forwarduser",
+  "guestbot", "inline", "invitelink", "sticker", "stickeranimated",
+  "stickerpremium", "url"
+]);
 
 export default async function handler(req, res) {
   try {
@@ -7,7 +33,7 @@ export default async function handler(req, res) {
       return res.status(200).send(`${BOT_NAME} webhook is running.`);
     }
 
-    const token = (process.env.TELEGRAM_TOKEN || "").trim();
+    const token = (process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
     const secret = (process.env.WEBHOOK_SECRET || "").trim();
     const logChatId = (process.env.LOG_CHAT_ID || "").trim();
 
@@ -48,7 +74,7 @@ export default async function handler(req, res) {
     }
 
     const message = update.message || update.edited_message;
-    if (message?.chat?.id && typeof message.text === "string" && message.text.trim()) {
+    if (message?.chat?.id) {
       await handleMessage(message, token);
     }
 
@@ -88,16 +114,172 @@ async function storeSet(key, value) {
   memoryStore.set(key, value);
   try {
     if (hasRedis()) {
-      const url = `${process.env.UPSTASH_REDIS_REST_URL}/set/${encodeURIComponent(
-        key
-      )}/${encodeURIComponent(JSON.stringify(value))}`;
+      const url = `${process.env.UPSTASH_REDIS_REST_URL}/set/${encodeURIComponent(key)}`;
       await fetch(url, {
-        headers: { Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}` },
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(JSON.stringify(value)),
       });
     }
   } catch (err) {
     console.error("storeSet error:", err.message);
   }
+}
+
+function getDefaultChatConfig() {
+  return {
+    anonAdmin: false,
+    adminError: true,
+    approvedUsers: [],
+    flood: {
+      limit: 0,
+      timerCount: 0,
+      timerSeconds: 0,
+      action: "mute",
+      durationSeconds: 0,
+      clearFlood: false,
+    },
+    blocklists: [],
+    blocklistMode: "nothing",
+    blocklistDelete: true,
+    blocklistReason: "",
+    cleanCommands: [],
+    locks: {},
+    lockConfig: {},
+    lockWarns: false,
+    allowlist: [],
+    greetings: {
+      welcomeEnabled: false,
+      goodbyeEnabled: false,
+      welcomeText: "Welcome {first} to {chatname}!",
+      goodbyeText: "Goodbye {first}!",
+      cleanWelcome: false,
+      lastWelcomeMsgId: null,
+      lastWelcomeTs: 0,
+    },
+    pin: {
+      antiChannelPin: false,
+      cleanLinked: false,
+    },
+    rules: {
+      text: "",
+      privateRules: false,
+      buttonText: "Rules",
+    },
+    warnings: {
+      mode: "ban",
+      limit: 3,
+      timeSeconds: 0,
+      durationSeconds: 0,
+    },
+  };
+}
+
+async function getChatConfig(chatId) {
+  const existing = (await storeGet(`cfg:${chatId}`)) || {};
+  const base = getDefaultChatConfig();
+  return {
+    ...base,
+    ...existing,
+    flood: { ...base.flood, ...(existing.flood || {}) },
+    greetings: { ...base.greetings, ...(existing.greetings || {}) },
+    pin: { ...base.pin, ...(existing.pin || {}) },
+    rules: { ...base.rules, ...(existing.rules || {}) },
+    warnings: { ...base.warnings, ...(existing.warnings || {}) },
+  };
+}
+
+async function saveChatConfig(chatId, cfg) {
+  await storeSet(`cfg:${chatId}`, cfg);
+}
+
+function parseBoolFlag(val) {
+  if (!val) return null;
+  const v = val.toLowerCase();
+  if (["yes", "on", "true", "1"].includes(v)) return true;
+  if (["no", "off", "false", "0"].includes(v)) return false;
+  return null;
+}
+
+function parseDurationSeconds(raw) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return null;
+  if (["off", "no", "none", "0"].includes(s)) return 0;
+  const match = s.match(/^(\d+)([smhdw])$/);
+  if (!match) return null;
+  const mult = { s: 1, m: 60, h: 3600, d: 86400, w: 604800 };
+  return Number(match[1]) * mult[match[2]];
+}
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function wildcardToRegex(pattern, allowSpaces = false) {
+  let reStr = "^";
+  for (let i = 0; i < pattern.length; i++) {
+    if (pattern[i] === "*" && pattern[i + 1] === "*") {
+      reStr += allowSpaces ? "[\\s\\S]*" : ".*";
+      i++;
+    } else if (pattern[i] === "*") {
+      reStr += "\\S*";
+    } else if (pattern[i] === "?") {
+      reStr += "\\S";
+    } else {
+      reStr += escapeRegex(pattern[i]);
+    }
+  }
+  reStr += "$";
+  return new RegExp(reStr, "i");
+}
+
+function applyFillings(text, user, chat, extra = {}) {
+  if (!text) return "";
+  const first = user?.first_name || "User";
+  const last = user?.last_name || "";
+  const full = `${first}${last ? ` ${last}` : ""}`;
+  const username = user?.username ? `@${user.username}` : full;
+  const id = user?.id ?? "";
+  const chatName = chat?.title || "Group";
+  let out = text
+    .replace(/\{first\}/g, first)
+    .replace(/\{last\}/g, last)
+    .replace(/\{fullname\}/g, full)
+    .replace(/\{username\}/g, username)
+    .replace(/\{id\}/g, String(id))
+    .replace(/\{mention\}/g, id ? `[${first}](tg://user?id=${id})` : first)
+    .replace(/\{chatname\}/g, chatName);
+  if (extra.rulesButton) {
+    out = out.replace(/\{rules\}/g, extra.rulesButton);
+  }
+  return out;
+}
+
+function extractButtonsFromText(raw) {
+  const buttons = [];
+  const cleaned = raw.replace(
+    /\[([^\]]+)\]\((buttonurl|buttonalert):\/\/([^)]+)\)/g,
+    (_, label, kind, target) => {
+      if (kind === "buttonurl") {
+        const t = target.trim();
+        const url =
+          t.startsWith("http://") || t.startsWith("https://")
+            ? t
+            : `https://${t.replace(/^\/+/, "")}`;
+        buttons.push([{ text: label.trim(), url }]);
+      } else {
+        buttons.push([{ text: label.trim(), callback_data: `alert:${target.trim().slice(0, 55)}` }]);
+      }
+      return "";
+    }
+  );
+  return {
+    text: cleaned.trim(),
+    replyMarkup: buttons.length ? { inline_keyboard: buttons } : undefined,
+  };
 }
 
 async function handleBotMembershipChange(mcm, token, logChatId) {
@@ -107,6 +289,8 @@ async function handleBotMembershipChange(mcm, token, logChatId) {
   const newStatus = mcm.new_chat_member?.status;
 
   if (!chat?.id || oldStatus === newStatus) return;
+
+  adminCache.delete(chat.id);
 
   const title = chat.title || String(chat.id);
   const actorLabel = actor?.username
@@ -175,11 +359,20 @@ async function handleCallback(cq, token) {
   const chatId = cq.message?.chat?.id;
   const data = cq.data || "";
 
+  if (data.startsWith("alert:")) {
+    await safeTgApi(token, "answerCallbackQuery", {
+      callback_query_id: cq.id,
+      text: data.slice(6),
+      show_alert: true,
+    });
+    return;
+  }
+
   const textMap = {
-    "cc:mod": `${BOT_NAME} Moderation & Pin (Groups only):\n/pin (reply to message)\n/unpin (reply or latest pinned)\n/ban [@user|id|reply] [reason]\n/tban [@user|id|reply] 2d [reason]\n/unban [@user|id|reply]\n/mute [@user|id|reply] [reason]\n/tmute [@user|id|reply] 2h [reason]\n/unmute [@user|id|reply]\n/kick [@user|id|reply] [reason]`,
-    "cc:fn": `${BOT_NAME} Filters & Notes (Groups only):\n/filter <keyword> <reply text>\n/filters\n/stop <keyword>\n/save <name> <content>\n/get <name> or #<name>\n/notes\n/clear <name>`,
-    "cc:warn": `${BOT_NAME} Warnings (Auto-ban at 3 warnings):\n/warn [@user|id|reply] [reason]\n/warns [@user|id|reply]\n/rmwarn [@user|id|reply]\n/resetwarn [@user|id|reply]`,
-    "cc:rights": `${BOT_NAME} Auto-Approve & Rights:\n- Enable Request Admin Approval on the invite link and grant Invite Users permission.\n- I notify you if I lack required permissions, and notify you if I am banned or demoted.`,
+    "cc:mod": `${BOT_NAME} Moderation & Pin (Groups only):\n/pin, /permapin, /pinned, /unpin, /unpinall, /antichannelpin, /cleanlinked\n/ban, /dban, /sban, /tban, /unban, /mute, /dmute, /smute, /tmute, /unmute, /kick, /dkick, /skick, /kickme\n/purge, /spurge, /del, /purgefrom, /purgeto`,
+    "cc:fn": `${BOT_NAME} Filters & Notes (Groups only):\n/filter <trigger> <reply text>\n/filters, /stop <trigger>\n/save <name> <content>, /get <name> or #<name>, /notes, /clear <name>\n/rules, /setrules, /privaterules, /resetrules, /setrulesbutton, /resetrulesbutton`,
+    "cc:warn": `${BOT_NAME} Warnings & Protection:\n/warn, /dwarn, /swarn, /warns, /rmwarn, /resetwarn, /resetallwarns, /warnings, /warnmode, /warnlimit, /warntime\n/flood, /setflood, /setfloodtimer, /floodmode, /clearflood\n/addblocklist, /rmblocklist, /unblocklistall, /blocklist, /blocklistmode, /blocklistdelete, /setblocklistreason, /resetblocklistreason\n/lock, /unlock, /locks, /lockwarns, /locktypes, /allowlist, /rmallowlist, /rmallowlistall`,
+    "cc:rights": `${BOT_NAME} Admin, Approval & Rights:\n/promote, /demote, /adminlist, /admincache, /anonadmin, /adminerror\n/approval, /approve, /unapprove, /approved, /unapproveall\n/cleancommand, /keepcommand, /cleancommandtypes`,
   };
 
   await safeTgApi(token, "answerCallbackQuery", { callback_query_id: cq.id });
@@ -188,21 +381,528 @@ async function handleCallback(cq, token) {
   }
 }
 
+function detectLockMatches(msg) {
+  const matches = new Set(["all"]);
+  const text = msg.text || msg.caption || "";
+  const entities = msg.entities || msg.caption_entities || [];
+
+  if (msg.media_group_id) matches.add("album");
+  if (msg.sender_chat && msg.sender_chat.id === msg.chat.id) matches.add("anonchannel");
+  if (msg.audio) matches.add("audio");
+  if (msg.new_chat_members?.some((m) => m.is_bot)) matches.add("bot");
+  if (msg.reply_markup?.inline_keyboard) matches.add("button");
+  if (msg.checklist) matches.add("checklist");
+  if (msg.contact) matches.add("contact");
+  if (msg.document) matches.add("document");
+  if (msg.game) matches.add("game");
+  if (msg.animation) matches.add("gif");
+  if (msg.via_bot) matches.add("inline");
+  if (msg.location || msg.venue) matches.add("location");
+  if (msg.photo) matches.add("photo");
+  if (msg.poll) matches.add("poll");
+  if (msg.story) matches.add("forwardstory");
+  if (msg.video) matches.add("video");
+  if (msg.video_note) matches.add("videonote");
+  if (msg.voice) matches.add("voice");
+  if (msg.web_app_data) matches.add("widget");
+  if (msg.external_reply) matches.add("externalreply");
+  if (msg.dice) {
+    matches.add("emojigame");
+    matches.add("emoji");
+  }
+
+  if (msg.forward_origin) {
+    matches.add("forward");
+    const t = msg.forward_origin.type;
+    if (t === "user" || t === "hidden_user") matches.add("forwarduser");
+    else if (t === "channel" || t === "chat") matches.add("forwardchannel");
+  }
+
+  if (text) {
+    matches.add("text");
+    if (/^\s*\//.test(text)) matches.add("command");
+    if (/(?:^|\s)\$[A-Z]{1,10}\b/.test(text)) matches.add("cashtag");
+    if (/(?:https?:\/\/|t\.me\/|@\w*bot\b)/i.test(text)) {
+      if (/(?:t\.me\/[a-zA-Z0-9_]+bot|@\w*bot\b)/i.test(text)) matches.add("botlink");
+      if (/(?:https?:\/\/)?(?:t\.me\/(?:\+|joinchat\/|[a-zA-Z0-9_]+)|telegram\.me\/)/i.test(text)) {
+        matches.add("invitelink");
+      }
+      if (/https?:\/\/\S+/i.test(text)) matches.add("url");
+    }
+    if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/.test(text)) matches.add("cjk");
+    if (/[\u0400-\u04ff]/.test(text)) matches.add("cyrillic");
+    if (/[\u0590-\u05ff\u0600-\u06ff\u0750-\u077f]/.test(text)) matches.add("rtl");
+    if (/[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]{3,}/.test(text)) matches.add("zalgo");
+
+    const emojiMatches = text.match(/\p{Extended_Pictographic}/gu);
+    if (emojiMatches && emojiMatches.length > 0) matches.add("emoji");
+    const stripped = text.replace(/\p{Extended_Pictographic}/gu, "").replace(/[\s\u200d\ufe0f]/g, "");
+    if (emojiMatches && emojiMatches.length > 0 && stripped.length === 0) matches.add("emojionly");
+  }
+
+  for (const ent of entities) {
+    if (ent.type === "url" || ent.type === "text_link") matches.add("url");
+    if (ent.type === "email") matches.add("email");
+    if (ent.type === "phone_number") matches.add("phone");
+    if (ent.type === "bot_command") matches.add("command");
+    if (ent.type === "custom_emoji") {
+      matches.add("emojicustom");
+      matches.add("emoji");
+    }
+    if (ent.type === "spoiler") matches.add("spoiler");
+  }
+
+  if (msg.sticker) {
+    matches.add("sticker");
+    if (msg.sticker.is_animated || msg.sticker.is_video) matches.add("stickeranimated");
+    if (msg.sticker.premium_animation) matches.add("stickerpremium");
+  }
+
+  return matches;
+}
+
+function isAllowlisted(msg, cfg) {
+  const list = cfg.allowlist || [];
+  if (!list.length) return false;
+  const text = `${msg.text || ""} ${msg.caption || ""}`.toLowerCase();
+  const fwdChat = msg.forward_origin?.chat;
+  const fwdUser = msg.forward_origin?.sender_user;
+  const stickerSet = msg.sticker?.set_name?.toLowerCase();
+  const customEmojis = (msg.entities || msg.caption_entities || [])
+    .filter((e) => e.type === "custom_emoji")
+    .map((e) => e.custom_emoji_id);
+
+  for (const item of list) {
+    const low = item.toLowerCase();
+    if (text.includes(low)) return true;
+    if (fwdChat && (String(fwdChat.id) === item || (fwdChat.username && `@${fwdChat.username.toLowerCase()}` === low))) {
+      return true;
+    }
+    if (fwdUser && String(fwdUser.id) === item) return true;
+    if (stickerSet && low.includes(stickerSet)) return true;
+    if (low.startsWith("emojipack:") && customEmojis.length > 0) return true;
+  }
+  return false;
+}
+
+function matchBlocklistTrigger(trigger, text) {
+  if (!text) return false;
+  const quoted = trigger.match(/^"(.*)"$/);
+  if (quoted) {
+    return wildcardToRegex(quoted[1], true).test(text);
+  }
+  const regex = wildcardToRegex(trigger, false);
+  return text.split(/\s+/).some((tok) => regex.test(tok));
+}
+
+function matchFilterTrigger(triggerRaw, text) {
+  let trig = triggerRaw.trim();
+  let mode = "contains";
+  if (/^exact:/i.test(trig)) {
+    mode = "exact";
+    trig = trig.slice(6);
+  } else if (/^prefix:/i.test(trig)) {
+    mode = "prefix";
+    trig = trig.slice(7);
+  }
+  if (trig.startsWith('"') && trig.endsWith('"') && trig.length >= 2) {
+    trig = trig.slice(1, -1);
+  }
+  const lowerText = text.toLowerCase();
+  const lowerTrig = trig.toLowerCase();
+  if (mode === "exact") return lowerText === lowerTrig;
+  if (mode === "prefix") return lowerText.startsWith(lowerTrig);
+  return new RegExp(`(^|\\b)${escapeRegex(lowerTrig)}(\\b|$)`, "i").test(lowerText);
+}
+
+function parseFilterInput(rawArgsText) {
+  let triggers = [];
+  let rest = "";
+  const multiMatch = rawArgsText.match(/^\(([^)]+)\)\s*([\s\S]*)$/);
+  if (multiMatch) {
+    triggers = multiMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
+    rest = multiMatch[2] || "";
+  } else {
+    const quoteMatch = rawArgsText.match(/^("[^"]+")\s*([\s\S]*)$/);
+    if (quoteMatch) {
+      triggers = [quoteMatch[1]];
+      rest = quoteMatch[2] || "";
+    } else {
+      const idx = rawArgsText.indexOf(" ");
+      if (idx === -1) {
+        triggers = [rawArgsText.trim()];
+        rest = "";
+      } else {
+        triggers = [rawArgsText.slice(0, idx).trim()];
+        rest = rawArgsText.slice(idx + 1);
+      }
+    }
+  }
+  return { triggers, content: rest };
+}
+
+async function sendFormattedMessage(token, chatId, message, rawContent, isNoFormat = false, isForce = false, senderIsAdmin = false) {
+  const hasAdminFlag = /\{admin\}/i.test(rawContent);
+  const hasUserFlag = /\{user\}/i.test(rawContent);
+  const hasProtect = /\{protect\}/i.test(rawContent);
+  const hasReplyTag = /\{replytag\}/i.test(rawContent);
+
+  if (!isForce) {
+    if (hasAdminFlag && !senderIsAdmin) return false;
+    if (hasUserFlag && senderIsAdmin) return false;
+  }
+
+  const variants = rawContent.split(/\n%%%\n/);
+  let chosen = variants[Math.floor(Math.random() * variants.length)];
+
+  if (!isForce) {
+    if (/\{admin\}/i.test(chosen) && !senderIsAdmin) return false;
+    if (/\{user\}/i.test(chosen) && senderIsAdmin) return false;
+  }
+
+  chosen = chosen
+    .replace(/\{admin\}/gi, "")
+    .replace(/\{user\}/gi, "")
+    .replace(/\{allow_bot\}/gi, "")
+    .replace(/\{protect\}/gi, "")
+    .replace(/\{replytag\}/gi, "")
+    .trim();
+
+  if (isNoFormat) {
+    await safeSend(token, chatId, chosen, undefined, message.message_id);
+    return true;
+  }
+
+  const filled = applyFillings(chosen, message.from, message.chat);
+  const { text, replyMarkup } = extractButtonsFromText(filled);
+  const replyToId = hasReplyTag && message.reply_to_message
+    ? message.reply_to_message.message_id
+    : message.message_id;
+
+  await safeSend(token, chatId, text || " ", replyMarkup, replyToId, hasProtect);
+  return true;
+}
+
+async function applyPunishment(token, chatId, targetUser, action, durationSeconds = 0, reason = "") {
+  const untilDate = durationSeconds > 0 ? Math.floor(Date.now() / 1000) + durationSeconds : undefined;
+  const label = targetUser?.username
+    ? `@${targetUser.username}`
+    : targetUser?.first_name || String(targetUser?.id || "");
+
+  if (action === "ban" || action === "tban") {
+    const payload = { chat_id: chatId, user_id: targetUser.id };
+    if (untilDate) payload.until_date = untilDate;
+    await tgApi(token, "banChatMember", payload);
+    return `${label} ${action === "tban" && durationSeconds ? `temporarily banned (${durationSeconds}s)` : "banned"}${reason ? `\nReason: ${reason}` : ""}`;
+  }
+
+  if (action === "kick") {
+    await tgApi(token, "banChatMember", { chat_id: chatId, user_id: targetUser.id });
+    await tgApi(token, "unbanChatMember", { chat_id: chatId, user_id: targetUser.id, only_if_banned: true });
+    return `${label} kicked${reason ? `\nReason: ${reason}` : ""}`;
+  }
+
+  if (action === "mute" || action === "tmute") {
+    const payload = {
+      chat_id: chatId,
+      user_id: targetUser.id,
+      permissions: { can_send_messages: false },
+    };
+    if (untilDate) payload.until_date = untilDate;
+    await tgApi(token, "restrictChatMember", payload);
+    return `${label} muted${durationSeconds ? ` (${durationSeconds}s)` : ""}${reason ? `\nReason: ${reason}` : ""}`;
+  }
+
+  throw new Error(`Unsupported action: ${action}`);
+}
+
+async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessageId = null) {
+  const now = Date.now();
+  const uid = String(targetUser.id);
+  const wCfg = cfg.warnings;
+  const warnKey = `warns:${chatId}:${uid}`;
+  let warns = (await storeGet(warnKey)) || [];
+
+  if (wCfg.timeSeconds > 0) {
+    warns = warns.filter((w) => now - w.at < wCfg.timeSeconds * 1000);
+  }
+
+  warns.push({ reason: reason || "Warning", at: now });
+  await storeSet(warnKey, warns);
+
+  const label = targetUser?.username
+    ? `@${targetUser.username}`
+    : targetUser?.first_name || uid;
+
+  if (warns.length >= (wCfg.limit || 3)) {
+    await storeSet(warnKey, []);
+    if (PUNISHMENT_ACTIONS.has(wCfg.mode)) {
+      const msg = await applyPunishment(token, chatId, targetUser, wCfg.mode, wCfg.durationSeconds, reason);
+      await safeSend(token, chatId, `${msg} (reached ${wCfg.limit}/${wCfg.limit} warnings).`, undefined, replyToMessageId);
+      return;
+    }
+  }
+
+  await safeSend(
+    token,
+    chatId,
+    `Warning (${warns.length}/${wCfg.limit || 3}) issued to ${label}.\nReason: ${reason || "Warning"}`,
+    undefined,
+    replyToMessageId
+  );
+}
+
 async function handleMessage(message, token) {
   const chatId = message.chat.id;
   const isGroup = message.chat.type === "group" || message.chat.type === "supergroup";
-  const senderId = message.from?.id;
+  const sender = message.from;
+  const senderId = sender?.id;
 
-  const rawText = message.text.trim();
+  if (sender?.username) {
+    await storeSet(`user:${sender.username.toLowerCase()}`, {
+      id: sender.id,
+      first_name: sender.first_name,
+      last_name: sender.last_name,
+      username: sender.username,
+    });
+  }
+
+  const rawText = typeof message.text === "string"
+    ? message.text.trim()
+    : typeof message.caption === "string"
+      ? message.caption.trim()
+      : "";
+
+  if (!isGroup) {
+    if (rawText.startsWith("/start")) {
+      const parts = rawText.split(/\s+/);
+      if (parts[1] && parts[1].startsWith("rules_")) {
+        const targetChatId = parts[1].slice(6);
+        const targetCfg = await getChatConfig(targetChatId);
+        await safeSend(
+          token,
+          chatId,
+          targetCfg.rules.text
+            ? applyFillings(targetCfg.rules.text, sender, { title: "Group" })
+            : "No rules set for this chat."
+        );
+        return;
+      }
+      await safeSend(
+        token,
+        chatId,
+        `${BOT_NAME} is ready. Group moderation, warnings, filters, notes, locks, blocklists, antiflood, rules, greetings, pin, purges, and join-request auto-approve are active.`,
+        mainKeyboard()
+      );
+      return;
+    }
+
+    if (rawText.startsWith("/id")) {
+      const replyId = message.reply_to_message?.from?.id;
+      await safeSend(
+        token,
+        chatId,
+        `Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}`
+      );
+      return;
+    }
+
+    if (rawText.startsWith("/help")) {
+      await safeSend(
+        token,
+        chatId,
+        `${BOT_NAME} is ready. Use the menu below or add me to a group.`,
+        mainKeyboard()
+      );
+    }
+    return;
+  }
+
+  const cfg = await getChatConfig(chatId);
+
+  if (message.new_chat_members?.length > 0 && cfg.greetings.welcomeEnabled) {
+    if (cfg.greetings.cleanWelcome && cfg.greetings.lastWelcomeMsgId) {
+      await safeTgApi(token, "deleteMessage", {
+        chat_id: chatId,
+        message_id: cfg.greetings.lastWelcomeMsgId,
+      });
+    }
+    for (const member of message.new_chat_members) {
+      const filled = applyFillings(cfg.greetings.welcomeText, member, message.chat, {
+        rulesButton: cfg.rules.buttonText,
+      });
+      const { text, replyMarkup } = extractButtonsFromText(filled);
+      const sent = await safeTgApi(token, "sendMessage", {
+        chat_id: chatId,
+        text: text || `Welcome ${member.first_name}!`,
+        reply_markup: replyMarkup,
+      });
+      if (sent?.ok && sent.result?.message_id) {
+        cfg.greetings.lastWelcomeMsgId = sent.result.message_id;
+        cfg.greetings.lastWelcomeTs = Date.now();
+        await saveChatConfig(chatId, cfg);
+      }
+    }
+    return;
+  }
+
+  if (message.left_chat_member && cfg.greetings.goodbyeEnabled) {
+    const filled = applyFillings(cfg.greetings.goodbyeText, message.left_chat_member, message.chat, {
+      rulesButton: cfg.rules.buttonText,
+    });
+    const { text, replyMarkup } = extractButtonsFromText(filled);
+    await safeSend(token, chatId, text || `Goodbye ${message.left_chat_member.first_name}!`, replyMarkup);
+    return;
+  }
+
+  if (message.pinned_message && cfg.pin.antiChannelPin && message.pinned_message.sender_chat?.id === chatId) {
+    await safeTgApi(token, "unpinChatMessage", {
+      chat_id: chatId,
+      message_id: message.pinned_message.message_id,
+    });
+    return;
+  }
+
+  if (message.sender_chat && message.sender_chat.id === chatId && cfg.pin.cleanLinked && !message.from) {
+    await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+    return;
+  }
+
+  if (cfg.greetings.cleanWelcome && cfg.greetings.lastWelcomeMsgId && cfg.greetings.lastWelcomeTs) {
+    if (Date.now() - cfg.greetings.lastWelcomeTs >= 5 * 60 * 1000) {
+      await safeTgApi(token, "deleteMessage", {
+        chat_id: chatId,
+        message_id: cfg.greetings.lastWelcomeMsgId,
+      });
+      cfg.greetings.lastWelcomeMsgId = null;
+      cfg.greetings.lastWelcomeTs = 0;
+      await saveChatConfig(chatId, cfg);
+    }
+  }
+
   const normalizedText = rawText.replace(/^(\/[a-zA-Z0-9_]+)@[a-zA-Z0-9_]+/i, "$1");
-  const parts = normalizedText.split(/\s+/);
-  const cmd = parts[0].toLowerCase();
+  const parts = normalizedText ? normalizedText.split(/\s+/) : [];
+  const cmd = parts[0]?.toLowerCase() || "";
+  const cmdName = cmd.startsWith("/") ? cmd.slice(1) : "";
+  const cmdArgs = parts.slice(1);
+  const cmdArgsStr = cmd.startsWith("/")
+    ? normalizedText.slice(parts[0].length).trim()
+    : "";
+
+  const senderIsAdmin = senderId
+    ? await isChatAdmin(token, chatId, senderId, message.sender_chat, cfg)
+    : false;
+  const senderIsApproved = senderId
+    ? Array.isArray(cfg.approvedUsers) && cfg.approvedUsers.includes(senderId)
+    : false;
+
+  if (cmdName && cfg.cleanCommands.length > 0) {
+    const adminOnlySet = new Set([
+      "promote", "demote", "admincache", "anonadmin", "adminerror",
+      "approve", "unapprove", "approved", "unapproveall",
+      "setflood", "setfloodtimer", "floodmode", "clearflood",
+      "addblocklist", "rmblocklist", "unblocklistall", "blocklistmode",
+      "blocklistdelete", "setblocklistreason", "resetblocklistreason",
+      "cleancommand", "keepcommand",
+      "lock", "unlock", "lockwarns", "allowlist", "rmallowlist", "rmallowlistall",
+      "filter", "stop", "save", "clear",
+      "welcome", "goodbye", "setwelcome", "resetwelcome", "setgoodbye", "resetgoodbye", "cleanwelcome",
+      "pin", "permapin", "unpin", "unpinall", "antichannelpin", "cleanlinked",
+      "purge", "spurge", "del", "purgefrom", "purgeto",
+      "setrules", "privaterules", "resetrules", "setrulesbutton", "resetrulesbutton",
+      "warn", "dwarn", "swarn", "rmwarn", "resetwarn", "resetallwarns",
+      "warnmode", "warnlimit", "warntime",
+      "ban", "dban", "sban", "tban", "unban", "mute", "dmute", "smute", "tmute", "unmute",
+      "kick", "dkick", "skick"
+    ]);
+    const userKnownSet = new Set([
+      "start", "help", "id", "adminlist", "approval", "flood", "blocklist",
+      "cleancommandtypes", "locks", "locktypes", "filters", "get", "notes",
+      "pinned", "rules", "warnings", "warns", "kickme"
+    ]);
+    const isAdminCmd = adminOnlySet.has(cmdName);
+    const isKnown = isAdminCmd || userKnownSet.has(cmdName);
+    const shouldClean =
+      cfg.cleanCommands.includes("all") ||
+      (cfg.cleanCommands.includes("admin") && isAdminCmd) ||
+      (cfg.cleanCommands.includes("user") && !isAdminCmd && isKnown) ||
+      (cfg.cleanCommands.includes("other") && !isKnown);
+
+    if (shouldClean) {
+      await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+    }
+  }
+
+  if (!senderIsAdmin && !senderIsApproved && senderId) {
+    const lockHits = detectLockMatches(message);
+    const allowlisted = isAllowlisted(message, cfg);
+
+    for (const lType of lockHits) {
+      if (!cfg.locks[lType]) continue;
+      if (allowlisted && ALLOWLISTABLE_LOCKS.has(lType)) continue;
+
+      await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+      const lConf = cfg.lockConfig[lType];
+      if (lConf?.action && PUNISHMENT_ACTIONS.has(lConf.action)) {
+        const resText = await applyPunishment(token, chatId, sender, lConf.action, lConf.durationSeconds || 0, lConf.reason || "");
+        await safeSend(token, chatId, resText);
+      } else if (lConf?.action === "warn" || cfg.lockWarns) {
+        await applyWarning(token, chatId, sender, lConf?.reason || `Locked item: ${lType}`, cfg, null);
+      }
+      return;
+    }
+
+    if (rawText && cfg.blocklists.length > 0) {
+      const hit = cfg.blocklists.find((b) => matchBlocklistTrigger(b.trigger, rawText));
+      if (hit) {
+        if (cfg.blocklistDelete) {
+          await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+        }
+        const reason = hit.reason || cfg.blocklistReason || `Blocklist match: ${hit.trigger}`;
+        if (cfg.blocklistMode === "warn") {
+          await applyWarning(token, chatId, sender, reason, cfg, null);
+        } else if (PUNISHMENT_ACTIONS.has(cfg.blocklistMode)) {
+          const resText = await applyPunishment(token, chatId, sender, cfg.blocklistMode, 0, reason);
+          await safeSend(token, chatId, resText);
+        }
+        return;
+      }
+    }
+
+    if (cfg.flood.limit > 0 || cfg.flood.timerCount > 0) {
+      const fKey = `${chatId}:${senderId}`;
+      const now = Date.now();
+      const st = floodState.get(fKey) || { count: 0, ts: [] };
+      st.count += 1;
+      st.ts.push(now);
+
+      let tripped = false;
+      if (cfg.flood.limit > 0 && st.count > cfg.flood.limit) tripped = true;
+      if (!tripped && cfg.flood.timerCount > 0 && cfg.flood.timerSeconds > 0) {
+        st.ts = st.ts.filter((t) => now - t <= cfg.flood.timerSeconds * 1000);
+        if (st.ts.length >= cfg.flood.timerCount) tripped = true;
+      }
+      floodState.set(fKey, st);
+
+      if (tripped) {
+        floodState.set(fKey, { count: 0, ts: [] });
+        if (cfg.flood.clearFlood) {
+          await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+        }
+        const resText = await applyPunishment(token, chatId, sender, cfg.flood.action, cfg.flood.durationSeconds, "Antiflood triggered");
+        await safeSend(token, chatId, resText);
+        return;
+      }
+    }
+  } else if (senderId) {
+    floodState.set(`${chatId}:${senderId}`, { count: 0, ts: [] });
+  }
 
   if (cmd === "/start" || cmd === "/help") {
     await safeSend(
       token,
       chatId,
-      `${BOT_NAME} is ready. Group moderation, warnings, filters, notes, and join-request auto-approve are active.`,
+      `${BOT_NAME} is ready. Group moderation, warnings, filters, notes, locks, blocklists, antiflood, rules, greetings, pin, purges, and join-request auto-approve are active.`,
       mainKeyboard()
     );
     return;
@@ -222,19 +922,31 @@ async function handleMessage(message, token) {
     const noteName = normalizedText.slice(1).toLowerCase();
     const notes = (await storeGet(`notes:${chatId}`)) || {};
     if (notes[noteName]) {
-      await safeSend(token, chatId, notes[noteName]);
+      await sendFormattedMessage(token, chatId, message, notes[noteName], false, false, senderIsAdmin);
     }
     return;
   }
 
   if (cmd === "/get") {
-    const noteName = (parts[1] || "").toLowerCase();
+    const noteName = (cmdArgs[0] || "").toLowerCase();
     if (!noteName) {
       await safeSend(token, chatId, "Usage: /get <note_name>");
       return;
     }
     const notes = (await storeGet(`notes:${chatId}`)) || {};
-    await safeSend(token, chatId, notes[noteName] || "Note not found.");
+    if (!notes[noteName]) {
+      await safeSend(token, chatId, "Note not found.");
+      return;
+    }
+    await sendFormattedMessage(
+      token,
+      chatId,
+      message,
+      notes[noteName],
+      cmdArgs[1]?.toLowerCase() === "noformat",
+      false,
+      senderIsAdmin
+    );
     return;
   }
 
@@ -249,52 +961,1147 @@ async function handleMessage(message, token) {
     return;
   }
 
-  const adminCommands = new Set([
-    "/pin",
-    "/unpin",
-    "/filter",
-    "/filters",
-    "/stop",
-    "/save",
-    "/clear",
-    "/ban",
-    "/tban",
-    "/unban",
-    "/mute",
-    "/tmute",
-    "/unmute",
-    "/kick",
-    "/warn",
-    "/warns",
-    "/rmwarn",
-    "/resetwarn",
-  ]);
-
-  if (adminCommands.has(cmd)) {
-    if (!isGroup) {
-      await safeSend(token, chatId, `${cmd} only works in groups or supergroups.`);
-      return;
-    }
-
-    if (!senderId || !(await isChatAdmin(token, chatId, senderId))) {
-      await safeSend(token, chatId, "Only group administrators can use this command.");
-      return;
-    }
-
-    await runAdminCommand(message, token, cmd, parts, normalizedText);
+  if (cmd === "/adminlist") {
+    const admins = await getChatAdminsCached(token, chatId);
+    const lines = admins.map((a) => {
+      const role = a.status === "creator" ? " [Creator]" : "";
+      const title = a.custom_title ? ` (${a.custom_title})` : "";
+      return `- ${a.user.first_name}${a.user.username ? ` (@${a.user.username})` : ""}${role}${title}`;
+    });
+    await safeSend(token, chatId, lines.length ? `Admins:\n${lines.join("\n")}` : "No admins found.");
     return;
   }
 
-  if (isGroup) {
-    const filters = (await storeGet(`filters:${chatId}`)) || {};
-    const lowerMsg = rawText.toLowerCase();
-    for (const [keyword, replyText] of Object.entries(filters)) {
-      if (keyword && lowerMsg.includes(keyword)) {
-        await safeSend(token, chatId, replyText);
-        break;
+  if (cmd === "/approval") {
+    const target = await resolveTargetUser(token, message, parts);
+    const checkUser = target.id ? target : { id: senderId, label: sender?.username ? `@${sender.username}` : String(senderId) };
+    const isApp = checkUser.id && cfg.approvedUsers.includes(checkUser.id);
+    await safeSend(token, chatId, `${checkUser.label} is ${isApp ? "approved" : "not approved"}.`);
+    return;
+  }
+
+  if (cmd === "/flood") {
+    await safeSend(
+      token,
+      chatId,
+      `Flood settings:\nLimit: ${cfg.flood.limit || "off"}\nTimer: ${cfg.flood.timerCount ? `${cfg.flood.timerCount} msgs / ${cfg.flood.timerSeconds}s` : "off"}\nAction: ${cfg.flood.action}\nClear flood: ${cfg.flood.clearFlood ? "on" : "off"}`
+    );
+    return;
+  }
+
+  if (cmd === "/blocklist") {
+    const listStr = cfg.blocklists.length
+      ? cfg.blocklists.map((b) => `- ${b.trigger}${b.reason ? ` (${b.reason})` : ""}`).join("\n")
+      : "No blocklist triggers set.";
+    await safeSend(
+      token,
+      chatId,
+      `Blocklist (mode: ${cfg.blocklistMode}, delete: ${cfg.blocklistDelete ? "on" : "off"}):\n${listStr}`
+    );
+    return;
+  }
+
+  if (cmd === "/cleancommandtypes") {
+    await safeSend(token, chatId, "Cleanable command types: all, admin, user, other");
+    return;
+  }
+
+  if (cmd === "/locktypes") {
+    await safeSend(token, chatId, `Lock types (${LOCK_TYPES.length}):\n${LOCK_TYPES.join(", ")}`);
+    return;
+  }
+
+  if (cmd === "/locks") {
+    const locked = Object.keys(cfg.locks).filter((k) => cfg.locks[k]);
+    if (cmdArgs[0]?.toLowerCase() === "list") {
+      await safeSend(token, chatId, `Locked: ${locked.join(", ") || "none"}\nAll: ${LOCK_TYPES.join(", ")}`);
+    } else {
+      await safeSend(token, chatId, `Currently locked:\n${locked.join(", ") || "none"}`);
+    }
+    return;
+  }
+
+  if (cmd === "/filters") {
+    const filters = (await storeGet(`filters_v2:${chatId}`)) || [];
+    await safeSend(
+      token,
+      chatId,
+      filters.length ? `Active filters:\n${filters.map((f) => `- ${f.trigger}`).join("\n")}` : "No filters configured."
+    );
+    return;
+  }
+
+  if (cmd === "/pinned") {
+    try {
+      const chatRes = await tgApi(token, "getChat", { chat_id: chatId });
+      const pId = chatRes?.result?.pinned_message?.message_id;
+      if (!pId) {
+        await safeSend(token, chatId, "No pinned message found.");
+        return;
+      }
+      await safeSend(token, chatId, "Current pinned message.", undefined, pId);
+    } catch (err) {
+      await safeSend(token, chatId, `Failed to get pinned message: ${err.message}`);
+    }
+    return;
+  }
+
+  if (cmd === "/rules") {
+    if (!cfg.rules.text) {
+      await safeSend(token, chatId, "No rules have been set for this chat.");
+      return;
+    }
+    if (cmdArgs[0]?.toLowerCase() === "noformat") {
+      await safeSend(token, chatId, cfg.rules.text);
+      return;
+    }
+    if (cfg.rules.privateRules && senderId) {
+      const me = await safeTgApi(token, "getMe", {});
+      const botUname = me?.result?.username || "";
+      if (botUname) {
+        await safeSend(
+          token,
+          chatId,
+          "Click below to view the rules in private.",
+          { inline_keyboard: [[{ text: cfg.rules.buttonText || "Rules", url: `https://t.me/${botUname}?start=rules_${chatId}` }]] },
+          message.message_id
+        );
+        return;
+      }
+    }
+    const filled = applyFillings(cfg.rules.text, sender, message.chat, { rulesButton: cfg.rules.buttonText });
+    const { text, replyMarkup } = extractButtonsFromText(filled);
+    await safeSend(token, chatId, text, replyMarkup);
+    return;
+  }
+
+  if (cmd === "/warnings") {
+    await safeSend(
+      token,
+      chatId,
+      `Warning settings:\nLimit: ${cfg.warnings.limit}\nMode: ${cfg.warnings.mode}\nExpire time: ${cfg.warnings.timeSeconds ? `${cfg.warnings.timeSeconds}s` : "off"}`
+    );
+    return;
+  }
+
+  if (cmd === "/kickme") {
+    if (!senderId) return;
+    const right = await checkBotPermission(token, chatId, "can_restrict_members");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+    try {
+      const resText = await applyPunishment(token, chatId, sender, "kick", 0, "Used /kickme");
+      await safeSend(token, chatId, resText);
+    } catch (err) {
+      await safeSend(token, chatId, `Kick failed: ${err.message}`);
+    }
+    return;
+  }
+
+  const adminCommands = new Set([
+    "/promote", "/demote", "/admincache", "/anonadmin", "/adminerror",
+    "/approve", "/unapprove", "/approved", "/unapproveall",
+    "/setflood", "/setfloodtimer", "/floodmode", "/clearflood",
+    "/addblocklist", "/rmblocklist", "/unblocklistall", "/blocklistmode",
+    "/blocklistdelete", "/setblocklistreason", "/resetblocklistreason",
+    "/cleancommand", "/keepcommand",
+    "/lock", "/unlock", "/lockwarns", "/allowlist", "/rmallowlist", "/rmallowlistall",
+    "/filter", "/stop", "/save", "/clear",
+    "/welcome", "/goodbye", "/setwelcome", "/resetwelcome", "/setgoodbye", "/resetgoodbye", "/cleanwelcome",
+    "/pin", "/permapin", "/unpin", "/unpinall", "/antichannelpin", "/cleanlinked",
+    "/purge", "/spurge", "/del", "/purgefrom", "/purgeto",
+    "/setrules", "/privaterules", "/resetrules", "/setrulesbutton", "/resetrulesbutton",
+    "/warn", "/dwarn", "/swarn", "/warns", "/rmwarn", "/resetwarn", "/resetallwarns",
+    "/warnmode", "/warnlimit", "/warntime",
+    "/ban", "/dban", "/sban", "/tban", "/unban",
+    "/mute", "/dmute", "/smute", "/tmute", "/unmute",
+    "/kick", "/dkick", "/skick"
+  ]);
+
+  if (adminCommands.has(cmd)) {
+    if (!senderId || !senderIsAdmin) {
+      if (cfg.adminError) {
+        await safeSend(token, chatId, "Only group administrators can use this command.");
+      }
+      return;
+    }
+
+    await runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs, cmdArgsStr, normalizedText);
+    return;
+  }
+
+  if (rawText) {
+    const filters = (await storeGet(`filters_v2:${chatId}`)) || [];
+    const forceMatch = rawText.match(/^(.*?)\s+force$/i);
+    const noFmtMatch = rawText.match(/^(.*?)\s+noformat$/i);
+    const isForce = Boolean(forceMatch && senderIsAdmin);
+    const isNoFormat = Boolean(noFmtMatch);
+    const queryText = forceMatch ? forceMatch[1].trim() : noFmtMatch ? noFmtMatch[1].trim() : rawText;
+
+    for (const flt of filters) {
+      const allowBot = /\{allow_bot\}/i.test(flt.content);
+      if (sender?.is_bot && !allowBot) continue;
+      if (matchFilterTrigger(flt.trigger, queryText)) {
+        const sent = await sendFormattedMessage(token, chatId, message, flt.content, isNoFormat, isForce, senderIsAdmin);
+        if (sent) break;
       }
     }
   }
+}
+
+async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs, cmdArgsStr, cleanLine) {
+  const chatId = message.chat.id;
+  const senderId = message.from?.id;
+
+  if (cmd === "/promote" || cmd === "/demote") {
+    const right = await checkBotPermission(token, chatId, "can_promote_members");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+    const target = await resolveTargetUser(token, message, parts);
+    if (!target.id) {
+      await safeSend(token, chatId, `Specify a target using ${cmd} @username / ${cmd} <user_id> or reply.`);
+      return;
+    }
+    const isPromo = cmd === "/promote";
+    try {
+      await tgApi(token, "promoteChatMember", {
+        chat_id: chatId,
+        user_id: target.id,
+        can_manage_chat: isPromo,
+        can_delete_messages: isPromo,
+        can_restrict_members: isPromo,
+        can_invite_users: isPromo,
+        can_pin_messages: isPromo,
+        can_promote_members: false,
+      });
+      adminCache.delete(chatId);
+      await safeSend(token, chatId, `${isPromo ? "Promoted" : "Demoted"} ${target.label}.`);
+    } catch (err) {
+      await safeSend(token, chatId, `${isPromo ? "Promote" : "Demote"} failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (cmd === "/admincache") {
+    await getChatAdminsCached(token, chatId, true);
+    await safeSend(token, chatId, "Admin cache refreshed.");
+    return;
+  }
+
+  if (cmd === "/anonadmin") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /anonadmin <yes/no/on/off>");
+      return;
+    }
+    cfg.anonAdmin = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Anonymous admin bypass set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/adminerror") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /adminerror <yes/no/on/off>");
+      return;
+    }
+    cfg.adminError = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Admin error messages set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/approve") {
+    const target = await resolveTargetUser(token, message, parts);
+    if (!target.id) {
+      await safeSend(token, chatId, "Specify a user to approve.");
+      return;
+    }
+    if (!cfg.approvedUsers.includes(target.id)) cfg.approvedUsers.push(target.id);
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Approved ${target.label}.`);
+    return;
+  }
+
+  if (cmd === "/unapprove") {
+    const target = await resolveTargetUser(token, message, parts);
+    if (!target.id) {
+      await safeSend(token, chatId, "Specify a user to unapprove.");
+      return;
+    }
+    cfg.approvedUsers = cfg.approvedUsers.filter((id) => id !== target.id);
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Unapproved ${target.label}.`);
+    return;
+  }
+
+  if (cmd === "/approved") {
+    await safeSend(
+      token,
+      chatId,
+      cfg.approvedUsers.length ? `Approved IDs:\n${cfg.approvedUsers.join(", ")}` : "No approved users."
+    );
+    return;
+  }
+
+  if (cmd === "/unapproveall") {
+    cfg.approvedUsers = [];
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "All users unapproved.");
+    return;
+  }
+
+  if (cmd === "/setflood") {
+    const val = (cmdArgs[0] || "").toLowerCase();
+    if (["0", "off", "no"].includes(val)) {
+      cfg.flood.limit = 0;
+      await saveChatConfig(chatId, cfg);
+      await safeSend(token, chatId, "Antiflood disabled.");
+      return;
+    }
+    const n = parseInt(val, 10);
+    if (!n || n < 1) {
+      await safeSend(token, chatId, "Usage: /setflood <number/off/no>");
+      return;
+    }
+    cfg.flood.limit = n;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Antiflood set to ${n} messages.`);
+    return;
+  }
+
+  if (cmd === "/setfloodtimer") {
+    if (["off", "no"].includes((cmdArgs[0] || "").toLowerCase())) {
+      cfg.flood.timerCount = 0;
+      cfg.flood.timerSeconds = 0;
+      await saveChatConfig(chatId, cfg);
+      await safeSend(token, chatId, "Timed antiflood disabled.");
+      return;
+    }
+    const count = parseInt(cmdArgs[0], 10);
+    const secs = parseDurationSeconds(cmdArgs[1]);
+    if (!count || !secs) {
+      await safeSend(token, chatId, "Usage: /setfloodtimer <count> <duration|off>");
+      return;
+    }
+    cfg.flood.timerCount = count;
+    cfg.flood.timerSeconds = secs;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Timed antiflood set to ${count} msgs / ${secs}s.`);
+    return;
+  }
+
+  if (cmd === "/floodmode") {
+    const m = (cmdArgs[0] || "").toLowerCase();
+    if (!PUNISHMENT_ACTIONS.has(m)) {
+      await safeSend(token, chatId, "Usage: /floodmode <ban/mute/kick/tban/tmute> [duration]");
+      return;
+    }
+    const dur = cmdArgs[1] ? parseDurationSeconds(cmdArgs[1]) : 0;
+    if (cmdArgs[1] && dur === null) {
+      await safeSend(token, chatId, "Invalid duration.");
+      return;
+    }
+    cfg.flood.action = m;
+    cfg.flood.durationSeconds = dur || 0;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Flood mode set to ${m}${dur ? ` (${dur}s)` : ""}.`);
+    return;
+  }
+
+  if (cmd === "/clearflood") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /clearflood <yes/no/on/off>");
+      return;
+    }
+    cfg.flood.clearFlood = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Clear flood set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/addblocklist") {
+    if (!cmdArgsStr) {
+      await safeSend(token, chatId, "Usage: /addblocklist <trigger> [reason]");
+      return;
+    }
+    const qMatch = cmdArgsStr.match(/^("[^"]+")(?:\s+([\s\S]*))?$/);
+    const trigger = qMatch ? qMatch[1] : cmdArgs[0];
+    const reason = qMatch ? (qMatch[2] || "").trim() : cmdArgs.slice(1).join(" ");
+    cfg.blocklists = cfg.blocklists.filter((b) => b.trigger !== trigger);
+    cfg.blocklists.push({ trigger, reason });
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Added blocklist trigger: ${trigger}`);
+    return;
+  }
+
+  if (cmd === "/rmblocklist") {
+    if (!cmdArgsStr) {
+      await safeSend(token, chatId, "Usage: /rmblocklist <trigger>");
+      return;
+    }
+    cfg.blocklists = cfg.blocklists.filter((b) => b.trigger !== cmdArgsStr);
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Removed blocklist trigger: ${cmdArgsStr}`);
+    return;
+  }
+
+  if (cmd === "/unblocklistall") {
+    const admins = await getChatAdminsCached(token, chatId);
+    const creator = admins.find((a) => a.status === "creator");
+    if (creator?.user?.id !== senderId) {
+      await safeSend(token, chatId, "Only the group creator can clear all blocklists.");
+      return;
+    }
+    cfg.blocklists = [];
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "Cleared all blocklists.");
+    return;
+  }
+
+  if (cmd === "/blocklistmode") {
+    const m = (cmdArgs[0] || "").toLowerCase();
+    if (!BLOCKLIST_ACTIONS.has(m)) {
+      await safeSend(token, chatId, "Usage: /blocklistmode <nothing/ban/mute/kick/warn/tban/tmute>");
+      return;
+    }
+    cfg.blocklistMode = m;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Blocklist mode set to ${m}.`);
+    return;
+  }
+
+  if (cmd === "/blocklistdelete") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /blocklistdelete <yes/no/on/off>");
+      return;
+    }
+    cfg.blocklistDelete = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Blocklist message deletion set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/setblocklistreason") {
+    cfg.blocklistReason = cmdArgsStr;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "Default blocklist reason updated.");
+    return;
+  }
+
+  if (cmd === "/resetblocklistreason") {
+    cfg.blocklistReason = "";
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "Default blocklist reason reset.");
+    return;
+  }
+
+  if (cmd === "/cleancommand") {
+    const valid = cmdArgs.map((t) => t.toLowerCase()).filter((t) => CLEAN_CMD_TYPES.has(t));
+    if (!valid.length) {
+      await safeSend(token, chatId, "Usage: /cleancommand <all/admin/user/other>");
+      return;
+    }
+    cfg.cleanCommands = Array.from(new Set([...cfg.cleanCommands, ...valid]));
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Clean command types: ${cfg.cleanCommands.join(", ")}`);
+    return;
+  }
+
+  if (cmd === "/keepcommand") {
+    const toRemove = cmdArgs.map((t) => t.toLowerCase());
+    cfg.cleanCommands = cfg.cleanCommands.filter((t) => !toRemove.includes(t));
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Active clean command types: ${cfg.cleanCommands.join(", ") || "none"}`);
+    return;
+  }
+
+  if (cmd === "/lockwarns") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /lockwarns <yes/no/on/off>");
+      return;
+    }
+    cfg.lockWarns = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Lock warnings set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/lock") {
+    const [leftPart, rightPart] = cmdArgsStr.split("###");
+    const items = (leftPart || "").trim().split(/\s+/).map((s) => s.toLowerCase()).filter(Boolean);
+    if (!items.length) {
+      await safeSend(token, chatId, "Usage: /lock <item(s)> [### reason {action}]");
+      return;
+    }
+
+    if (rightPart !== undefined) {
+      const trimmedRight = rightPart.trim();
+      if (!trimmedRight) {
+        for (const it of items) {
+          if (it === "all") cfg.lockConfig = {};
+          else delete cfg.lockConfig[it];
+        }
+        await saveChatConfig(chatId, cfg);
+        await safeSend(token, chatId, "Reset custom lock action/reason.");
+        return;
+      }
+      const actMatch = trimmedRight.match(/\{(ban|mute|kick|tban|tmute|warn)\}/i);
+      const action = actMatch ? actMatch[1].toLowerCase() : null;
+      const reason = trimmedRight.replace(/\{[^}]+\}/g, "").trim();
+      for (const it of items) {
+        if (!LOCK_TYPES.includes(it)) continue;
+        cfg.locks[it] = true;
+        cfg.lockConfig[it] = { action, reason, durationSeconds: 0 };
+      }
+      await saveChatConfig(chatId, cfg);
+      await safeSend(token, chatId, `Locked ${items.join(", ")} with custom action/reason.`);
+      return;
+    }
+
+    const invalid = items.filter((i) => !LOCK_TYPES.includes(i));
+    if (invalid.length) {
+      await safeSend(token, chatId, `Unknown lock type(s): ${invalid.join(", ")}`);
+      return;
+    }
+    for (const it of items) cfg.locks[it] = true;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Locked: ${items.join(", ")}`);
+    return;
+  }
+
+  if (cmd === "/unlock") {
+    const items = cmdArgs.map((s) => s.toLowerCase());
+    if (!items.length) {
+      await safeSend(token, chatId, "Usage: /unlock <item(s)>");
+      return;
+    }
+    for (const it of items) delete cfg.locks[it];
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Unlocked: ${items.join(", ")}`);
+    return;
+  }
+
+  if (cmd === "/allowlist") {
+    const replyEmojis = (message.reply_to_message?.entities || [])
+      .filter((e) => e.type === "custom_emoji")
+      .map((e) => e.custom_emoji_id);
+    if (!cmdArgs.length && !replyEmojis.length) {
+      await safeSend(
+        token,
+        chatId,
+        cfg.allowlist.length ? `Allowlist:\n${cfg.allowlist.join("\n")}` : "Allowlist is empty."
+      );
+      return;
+    }
+    for (const it of cmdArgs) {
+      if (it.toLowerCase() === "emojipack:<>" && replyEmojis.length > 0) {
+        cfg.allowlist.push(`emojipack:${replyEmojis.join(",")}`);
+      } else if (!cfg.allowlist.includes(it)) {
+        cfg.allowlist.push(it);
+      }
+    }
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "Allowlist updated.");
+    return;
+  }
+
+  if (cmd === "/rmallowlist") {
+    cfg.allowlist = cfg.allowlist.filter((it) => !cmdArgs.includes(it));
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "Removed specified items from allowlist.");
+    return;
+  }
+
+  if (cmd === "/rmallowlistall") {
+    cfg.allowlist = [];
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "Cleared all allowlisted items.");
+    return;
+  }
+
+  if (cmd === "/filter") {
+    const { triggers, content } = parseFilterInput(cmdArgsStr);
+    if (!triggers.length || !content.trim()) {
+      await safeSend(token, chatId, "Usage: /filter <trigger> <reply text>");
+      return;
+    }
+    const filters = (await storeGet(`filters_v2:${chatId}`)) || [];
+    for (const trig of triggers) {
+      const idx = filters.findIndex((f) => f.trigger === trig);
+      if (idx >= 0) filters[idx] = { trigger: trig, content };
+      else filters.push({ trigger: trig, content });
+    }
+    await storeSet(`filters_v2:${chatId}`, filters);
+    await safeSend(token, chatId, `Filter saved: ${triggers.join(", ")}`);
+    return;
+  }
+
+  if (cmd === "/stop") {
+    if (!cmdArgsStr) {
+      await safeSend(token, chatId, "Usage: /stop <trigger>");
+      return;
+    }
+    const filters = (await storeGet(`filters_v2:${chatId}`)) || [];
+    const next = filters.filter((f) => f.trigger !== cmdArgsStr);
+    await storeSet(`filters_v2:${chatId}`, next);
+    await safeSend(token, chatId, `Filter removed: ${cmdArgsStr}`);
+    return;
+  }
+
+  if (cmd === "/save") {
+    const match = cleanLine.match(/^\/save\s+([a-zA-Z0-9_-]+)\s+([\s\S]+)$/i);
+    if (!match) {
+      await safeSend(token, chatId, "Usage: /save <note_name> <content>");
+      return;
+    }
+    const noteName = match[1].trim().toLowerCase();
+    const content = match[2].trim();
+    const notes = (await storeGet(`notes:${chatId}`)) || {};
+    notes[noteName] = content;
+    await storeSet(`notes:${chatId}`, notes);
+    await safeSend(token, chatId, `Note saved as #${noteName}`);
+    return;
+  }
+
+  if (cmd === "/clear") {
+    const noteName = (cmdArgs[0] || "").trim().toLowerCase();
+    if (!noteName) {
+      await safeSend(token, chatId, "Usage: /clear <note_name>");
+      return;
+    }
+    const notes = (await storeGet(`notes:${chatId}`)) || {};
+    delete notes[noteName];
+    await storeSet(`notes:${chatId}`, notes);
+    await safeSend(token, chatId, `Note #${noteName} deleted.`);
+    return;
+  }
+
+  if (cmd === "/welcome" || cmd === "/goodbye" || cmd === "/cleanwelcome") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, `Usage: ${cmd} <yes/no/on/off>`);
+      return;
+    }
+    if (cmd === "/welcome") cfg.greetings.welcomeEnabled = flag;
+    if (cmd === "/goodbye") cfg.greetings.goodbyeEnabled = flag;
+    if (cmd === "/cleanwelcome") cfg.greetings.cleanWelcome = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `${cmdName} set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/setwelcome" || cmd === "/setgoodbye") {
+    if (!cmdArgsStr) {
+      await safeSend(token, chatId, `Usage: ${cmd} <text>`);
+      return;
+    }
+    if (cmd === "/setwelcome") cfg.greetings.welcomeText = cmdArgsStr;
+    else cfg.greetings.goodbyeText = cmdArgsStr;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `${cmd === "/setwelcome" ? "Welcome" : "Goodbye"} message updated.`);
+    return;
+  }
+
+  if (cmd === "/resetwelcome" || cmd === "/resetgoodbye") {
+    const def = getDefaultChatConfig().greetings;
+    if (cmd === "/resetwelcome") cfg.greetings.welcomeText = def.welcomeText;
+    else cfg.greetings.goodbyeText = def.goodbyeText;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `${cmd === "/resetwelcome" ? "Welcome" : "Goodbye"} message reset.`);
+    return;
+  }
+
+  if (cmd === "/pin") {
+    const right = await checkBotPermission(token, chatId, "can_pin_messages");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+    const targetMsgId = message.reply_to_message?.message_id;
+    if (!targetMsgId) {
+      await safeSend(token, chatId, "Reply to the message you want to pin with /pin.");
+      return;
+    }
+    const silent = !cmdArgs.some((a) => ["loud", "notify"].includes(a.toLowerCase()));
+    try {
+      await tgApi(token, "pinChatMessage", {
+        chat_id: chatId,
+        message_id: targetMsgId,
+        disable_notification: silent,
+      });
+      await safeSend(token, chatId, "Message pinned.");
+    } catch (err) {
+      await safeSend(token, chatId, `Pin failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (cmd === "/permapin") {
+    const right = await checkBotPermission(token, chatId, "can_pin_messages");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+    if (!cmdArgsStr) {
+      await safeSend(token, chatId, "Usage: /permapin <text>");
+      return;
+    }
+    const filled = applyFillings(cmdArgsStr, message.from, message.chat, { rulesButton: cfg.rules.buttonText });
+    const { text, replyMarkup } = extractButtonsFromText(filled);
+    try {
+      const sent = await tgApi(token, "sendMessage", {
+        chat_id: chatId,
+        text,
+        reply_markup: replyMarkup,
+      });
+      if (sent?.result?.message_id) {
+        await tgApi(token, "pinChatMessage", {
+          chat_id: chatId,
+          message_id: sent.result.message_id,
+          disable_notification: true,
+        });
+      }
+    } catch (err) {
+      await safeSend(token, chatId, `Permapin failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (cmd === "/unpin") {
+    const right = await checkBotPermission(token, chatId, "can_pin_messages");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+    const targetMsgId = message.reply_to_message?.message_id;
+    try {
+      await tgApi(
+        token,
+        "unpinChatMessage",
+        targetMsgId ? { chat_id: chatId, message_id: targetMsgId } : { chat_id: chatId }
+      );
+      await safeSend(token, chatId, "Message unpinned.");
+    } catch (err) {
+      await safeSend(token, chatId, `Unpin failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (cmd === "/unpinall") {
+    const right = await checkBotPermission(token, chatId, "can_pin_messages");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+    try {
+      await tgApi(token, "unpinAllChatMessages", { chat_id: chatId });
+      await safeSend(token, chatId, "Unpinned all messages.");
+    } catch (err) {
+      await safeSend(token, chatId, `Unpinall failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (cmd === "/antichannelpin") {
+    if (!cmdArgs[0]) {
+      await safeSend(token, chatId, `Anti-channel pin is ${cfg.pin.antiChannelPin ? "on" : "off"}.`);
+      return;
+    }
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /antichannelpin <yes/no/on/off>");
+      return;
+    }
+    cfg.pin.antiChannelPin = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Anti-channel pin set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/cleanlinked") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /cleanlinked <yes/no/on/off>");
+      return;
+    }
+    cfg.pin.cleanLinked = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Clean linked channel set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/del") {
+    const right = await checkBotPermission(token, chatId, "can_delete_messages");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+    if (message.reply_to_message) {
+      await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
+    }
+    await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+    return;
+  }
+
+  if (cmd === "/purgefrom") {
+    if (!message.reply_to_message) {
+      await safeSend(token, chatId, "Reply to a message with /purgefrom.");
+      return;
+    }
+    purgeFromState.set(chatId, message.reply_to_message.message_id);
+    await safeSend(token, chatId, `Marked message ${message.reply_to_message.message_id} as purge start.`);
+    return;
+  }
+
+  if (cmd === "/purgeto") {
+    const right = await checkBotPermission(token, chatId, "can_delete_messages");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+    const startId = purgeFromState.get(chatId);
+    const endId = message.reply_to_message?.message_id || message.message_id;
+    if (!startId) {
+      await safeSend(token, chatId, "Use /purgefrom first.");
+      return;
+    }
+    const from = Math.min(startId, endId);
+    const to = Math.max(startId, endId);
+    const ids = [];
+    for (let id = from; id <= Math.min(to, from + 100); id++) ids.push(id);
+    if (ids.length) await safeTgApi(token, "deleteMessages", { chat_id: chatId, message_ids: ids });
+    purgeFromState.delete(chatId);
+    await safeSend(token, chatId, `Purged ${ids.length} messages.`);
+    return;
+  }
+
+  if (cmd === "/purge" || cmd === "/spurge") {
+    const right = await checkBotPermission(token, chatId, "can_delete_messages");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+    if (!message.reply_to_message) {
+      await safeSend(token, chatId, "Reply to a message to purge from.");
+      return;
+    }
+    const startId = message.reply_to_message.message_id;
+    const countArg = parseInt(cmdArgs[0], 10);
+    const endId = countArg && countArg > 0 ? startId + countArg : message.message_id;
+    const ids = [];
+    for (let id = startId; id <= Math.min(endId, startId + 100); id++) ids.push(id);
+    if (ids.length) await safeTgApi(token, "deleteMessages", { chat_id: chatId, message_ids: ids });
+    await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+    if (cmd === "/purge") {
+      await safeSend(token, chatId, `Purged ${ids.length} messages.`);
+    }
+    return;
+  }
+
+  if (cmd === "/setrules") {
+    if (!cmdArgsStr) {
+      await safeSend(token, chatId, "Usage: /setrules <text>");
+      return;
+    }
+    cfg.rules.text = cmdArgsStr;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "Chat rules updated.");
+    return;
+  }
+
+  if (cmd === "/privaterules") {
+    const flag = parseBoolFlag(cmdArgs[0]);
+    if (flag === null) {
+      await safeSend(token, chatId, "Usage: /privaterules <yes/no/on/off>");
+      return;
+    }
+    cfg.rules.privateRules = flag;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Private rules set to ${flag ? "on" : "off"}.`);
+    return;
+  }
+
+  if (cmd === "/resetrules") {
+    cfg.rules.text = "";
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "Chat rules reset.");
+    return;
+  }
+
+  if (cmd === "/setrulesbutton") {
+    if (!cmdArgsStr) {
+      await safeSend(token, chatId, "Usage: /setrulesbutton <label>");
+      return;
+    }
+    cfg.rules.buttonText = cmdArgsStr;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Rules button set to "${cmdArgsStr}".`);
+    return;
+  }
+
+  if (cmd === "/resetrulesbutton") {
+    cfg.rules.buttonText = "Rules";
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, "Rules button reset to default.");
+    return;
+  }
+
+  if (cmd === "/warnmode") {
+    const m = (cmdArgs[0] || "").toLowerCase();
+    if (!PUNISHMENT_ACTIONS.has(m)) {
+      await safeSend(token, chatId, "Usage: /warnmode <ban/mute/kick/tban/tmute> [duration]");
+      return;
+    }
+    const dur = cmdArgs[1] ? parseDurationSeconds(cmdArgs[1]) : 0;
+    if (cmdArgs[1] && dur === null) {
+      await safeSend(token, chatId, "Invalid duration.");
+      return;
+    }
+    cfg.warnings.mode = m;
+    cfg.warnings.durationSeconds = dur || 0;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Warn mode set to ${m}.`);
+    return;
+  }
+
+  if (cmd === "/warnlimit") {
+    const n = parseInt(cmdArgs[0], 10);
+    if (!n || n < 1) {
+      await safeSend(token, chatId, "Usage: /warnlimit <number>");
+      return;
+    }
+    cfg.warnings.limit = n;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, `Warn limit set to ${n}.`);
+    return;
+  }
+
+  if (cmd === "/warntime") {
+    const secs = parseDurationSeconds(cmdArgs[0]);
+    if (secs === null) {
+      await safeSend(token, chatId, "Usage: /warntime <time|off>");
+      return;
+    }
+    cfg.warnings.timeSeconds = secs;
+    await saveChatConfig(chatId, cfg);
+    await safeSend(token, chatId, secs === 0 ? "Warn expiration disabled." : `Warn expiration set to ${secs}s.`);
+    return;
+  }
+
+  if (cmd === "/resetallwarns") {
+    await storeSet(`cfg:${chatId}`, { ...cfg, warnings: { ...cfg.warnings, clearedAt: Date.now() } });
+    await safeSend(token, chatId, "All warnings cleared.");
+    return;
+  }
+
+  const needsRestrictRight = new Set([
+    "/ban", "/dban", "/sban", "/tban", "/unban",
+    "/mute", "/dmute", "/smute", "/tmute", "/unmute",
+    "/kick", "/dkick", "/skick",
+    "/warn", "/dwarn", "/swarn"
+  ]);
+
+  if (needsRestrictRight.has(cmd)) {
+    const right = await checkBotPermission(token, chatId, "can_restrict_members");
+    if (!right.ok) {
+      await safeSend(token, chatId, right.message);
+      return;
+    }
+  }
+
+  const target = await resolveTargetUser(token, message, parts);
+  if (!target.id) {
+    await safeSend(
+      token,
+      chatId,
+      `Specify a target by replying to a message or using ${cmd} @username / ${cmd} <user_id>.`
+    );
+    return;
+  }
+
+  if (await isChatAdmin(token, chatId, target.id)) {
+    await safeSend(
+      token,
+      chatId,
+      `${target.label} is an administrator; I cannot perform ${cmd} on an admin.`
+    );
+    return;
+  }
+
+  try {
+    if (["/ban", "/dban", "/sban", "/tban"].includes(cmd)) {
+      const durSec = cmd === "/tban"
+        ? parseDurationSeconds(target.args[0])
+        : target.args[0] && parseDurationSeconds(target.args[0]) !== null
+          ? parseDurationSeconds(target.args[0])
+          : null;
+      const reason = (durSec ? target.args.slice(1) : target.args).join(" ") || "No reason provided";
+
+      if ((cmd === "/dban" || cmd === "/sban") && message.reply_to_message) {
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
+      }
+      if (cmd === "/sban") {
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+      }
+
+      const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tban" : "ban", durSec || 0, reason);
+      if (cmd !== "/sban") {
+        await safeSend(token, chatId, resText);
+      }
+      return;
+    }
+
+    if (cmd === "/unban") {
+      await tgApi(token, "unbanChatMember", { chat_id: chatId, user_id: target.id, only_if_banned: true });
+      await safeSend(token, chatId, `${target.label} unbanned.`);
+      return;
+    }
+
+    if (["/kick", "/dkick", "/skick"].includes(cmd)) {
+      const reason = target.args.join(" ") || "No reason provided";
+      if ((cmd === "/dkick" || cmd === "/skick") && message.reply_to_message) {
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
+      }
+      if (cmd === "/skick") {
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+      }
+      const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, "kick", 0, reason);
+      if (cmd !== "/skick") {
+        await safeSend(token, chatId, resText);
+      }
+      return;
+    }
+
+    if (["/mute", "/dmute", "/smute", "/tmute"].includes(cmd)) {
+      const parsedDur = cmd === "/tmute"
+        ? parseDurationSeconds(target.args[0])
+        : target.args[0] && parseDurationSeconds(target.args[0]) !== null
+          ? parseDurationSeconds(target.args[0])
+          : null;
+      const durSec = cmd === "/tmute" ? parsedDur ?? 600 : parsedDur;
+      const reason = (parsedDur ? target.args.slice(1) : target.args).join(" ") || "No reason provided";
+
+      if ((cmd === "/dmute" || cmd === "/smute") && message.reply_to_message) {
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
+      }
+      if (cmd === "/smute") {
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+      }
+
+      const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tmute" : "mute", durSec || 0, reason);
+      if (cmd !== "/smute") {
+        await safeSend(token, chatId, resText);
+      }
+      return;
+    }
+
+    if (cmd === "/unmute") {
+      await tgApi(token, "restrictChatMember", {
+        chat_id: chatId,
+        user_id: target.id,
+        permissions: {
+          can_send_messages: true,
+          can_send_audios: true,
+          can_send_documents: true,
+          can_send_photos: true,
+          can_send_videos: true,
+          can_send_video_notes: true,
+          can_send_voice_notes: true,
+          can_send_polls: true,
+          can_send_other_messages: true,
+          can_add_web_page_previews: true,
+        },
+      });
+      await safeSend(token, chatId, `${target.label} unmuted.`);
+      return;
+    }
+
+    const warnKey = `warns:${chatId}:${target.id}`;
+    let warns = (await storeGet(warnKey)) || [];
+    if (cfg.warnings.clearedAt) {
+      warns = warns.filter((w) => w.at > cfg.warnings.clearedAt);
+    }
+
+    if (["/warn", "/dwarn", "/swarn"].includes(cmd)) {
+      const reason = target.args.join(" ") || "Warning";
+      if (cmd === "/dwarn" && message.reply_to_message) {
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
+      }
+      if (cmd === "/swarn") {
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+        await applyWarning(token, chatId, target.user || { id: target.id, username: target.label }, reason, cfg, null);
+      } else {
+        await applyWarning(token, chatId, target.user || { id: target.id, username: target.label }, reason, cfg, message.message_id);
+      }
+      return;
+    }
+
+    if (cmd === "/warns") {
+      if (!warns.length) {
+        await safeSend(token, chatId, `${target.label} has no warnings.`);
+        return;
+      }
+      const list = warns.map((w, idx) => `${idx + 1}. ${w.reason}`).join("\n");
+      await safeSend(token, chatId, `Warnings for ${target.label} (${warns.length}/${cfg.warnings.limit}):\n${list}`);
+      return;
+    }
+
+    if (cmd === "/rmwarn") {
+      warns.pop();
+      await storeSet(warnKey, warns);
+      await safeSend(token, chatId, `Latest warning removed (${warns.length}/${cfg.warnings.limit}).`);
+      return;
+    }
+
+    if (cmd === "/resetwarn") {
+      await storeSet(warnKey, []);
+      await safeSend(token, chatId, `All warnings cleared for ${target.label}.`);
+    }
+  } catch (err) {
+    await safeSend(token, chatId, `Action failed: ${err.message}`);
+  }
+}
+
+async function resolveTargetUser(token, message, parts) {
+  const replied = message.reply_to_message?.from;
+  if (replied?.id) {
+    return {
+      id: replied.id,
+      label: replied.username ? `@${replied.username}` : `${replied.id}`,
+      user: replied,
+      args: parts.slice(1),
+    };
+  }
+
+  const firstArg = (parts[1] || "").trim();
+  if (/^\d+$/.test(firstArg)) {
+    const id = Number(firstArg);
+    return { id, label: firstArg, user: { id, first_name: firstArg }, args: parts.slice(2) };
+  }
+
+  if (/^@[a-zA-Z0-9_]{3,}$/.test(firstArg)) {
+    const cachedUser = await storeGet(`user:${firstArg.slice(1).toLowerCase()}`);
+    if (cachedUser?.id) {
+      return { id: cachedUser.id, label: firstArg, user: cachedUser, args: parts.slice(2) };
+    }
+    try {
+      const chatRes = await tgApi(token, "getChat", { chat_id: firstArg });
+      if (chatRes?.result?.id) {
+        return { id: chatRes.result.id, label: firstArg, user: chatRes.result, args: parts.slice(2) };
+      }
+    } catch {}
+  }
+
+  return { id: null, label: "", user: null, args: parts.slice(1) };
 }
 
 async function checkBotPermission(token, chatId, requiredPerm) {
@@ -326,6 +2133,7 @@ async function checkBotPermission(token, chatId, requiredPerm) {
         can_restrict_members: "Ban / Restrict Members",
         can_invite_users: "Invite Users",
         can_delete_messages: "Delete Messages",
+        can_promote_members: "Promote New Admins",
       };
       return {
         ok: false,
@@ -339,332 +2147,27 @@ async function checkBotPermission(token, chatId, requiredPerm) {
   }
 }
 
-async function runAdminCommand(message, token, cmd, parts, cleanLine) {
-  const chatId = message.chat.id;
-
-  if (cmd === "/pin") {
-    const right = await checkBotPermission(token, chatId, "can_pin_messages");
-    if (!right.ok) {
-      await safeSend(token, chatId, right.message);
-      return;
-    }
-
-    const targetMsgId = message.reply_to_message?.message_id;
-    if (!targetMsgId) {
-      await safeSend(token, chatId, "Reply to the message you want to pin with /pin.");
-      return;
-    }
-
-    try {
-      await tgApi(token, "pinChatMessage", {
-        chat_id: chatId,
-        message_id: targetMsgId,
-        disable_notification: false,
-      });
-      await safeSend(token, chatId, "Message pinned.");
-    } catch (err) {
-      await safeSend(token, chatId, `Pin failed: ${err.message}`);
-    }
-    return;
+async function getChatAdminsCached(token, chatId, force = false) {
+  const now = Date.now();
+  const cached = adminCache.get(chatId);
+  if (!force && cached && now - cached.ts < 5 * 60 * 1000) {
+    return cached.admins;
   }
-
-  if (cmd === "/unpin") {
-    const right = await checkBotPermission(token, chatId, "can_pin_messages");
-    if (!right.ok) {
-      await safeSend(token, chatId, right.message);
-      return;
-    }
-
-    const targetMsgId = message.reply_to_message?.message_id;
-    try {
-      await tgApi(
-        token,
-        "unpinChatMessage",
-        targetMsgId ? { chat_id: chatId, message_id: targetMsgId } : { chat_id: chatId }
-      );
-      await safeSend(token, chatId, "Message unpinned.");
-    } catch (err) {
-      await safeSend(token, chatId, `Unpin failed: ${err.message}`);
-    }
-    return;
-  }
-
-  if (cmd === "/filter") {
-    const match = cleanLine.match(/^\/filter\s+(\S+)\s+([\s\S]+)$/i);
-    if (!match) {
-      await safeSend(token, chatId, "Usage: /filter <keyword> <reply text>");
-      return;
-    }
-
-    const keyword = match[1].trim().toLowerCase();
-    const replyText = match[2].trim();
-    const filters = (await storeGet(`filters:${chatId}`)) || {};
-    filters[keyword] = replyText;
-    await storeSet(`filters:${chatId}`, filters);
-    await safeSend(token, chatId, `Filter saved: "${keyword}"`);
-    return;
-  }
-
-  if (cmd === "/filters") {
-    const filters = (await storeGet(`filters:${chatId}`)) || {};
-    const keys = Object.keys(filters);
-    await safeSend(
-      token,
-      chatId,
-      keys.length ? `Active filters:\n${keys.map((k) => `- ${k}`).join("\n")}` : "No filters configured."
-    );
-    return;
-  }
-
-  if (cmd === "/stop") {
-    const keyword = (parts[1] || "").trim().toLowerCase();
-    if (!keyword) {
-      await safeSend(token, chatId, "Usage: /stop <keyword>");
-      return;
-    }
-    const filters = (await storeGet(`filters:${chatId}`)) || {};
-    delete filters[keyword];
-    await storeSet(`filters:${chatId}`, filters);
-    await safeSend(token, chatId, `Filter removed: "${keyword}"`);
-    return;
-  }
-
-  if (cmd === "/save") {
-    const match = cleanLine.match(/^\/save\s+([a-zA-Z0-9_-]+)\s+([\s\S]+)$/i);
-    if (!match) {
-      await safeSend(token, chatId, "Usage: /save <note_name> <content>");
-      return;
-    }
-    const noteName = match[1].trim().toLowerCase();
-    const content = match[2].trim();
-    const notes = (await storeGet(`notes:${chatId}`)) || {};
-    notes[noteName] = content;
-    await storeSet(`notes:${chatId}`, notes);
-    await safeSend(token, chatId, `Note saved as #${noteName}`);
-    return;
-  }
-
-  if (cmd === "/clear") {
-    const noteName = (parts[1] || "").trim().toLowerCase();
-    if (!noteName) {
-      await safeSend(token, chatId, "Usage: /clear <note_name>");
-      return;
-    }
-    const notes = (await storeGet(`notes:${chatId}`)) || {};
-    delete notes[noteName];
-    await storeSet(`notes:${chatId}`, notes);
-    await safeSend(token, chatId, `Note #${noteName} deleted.`);
-    return;
-  }
-
-  const needsRestrictRight = new Set([
-    "/ban",
-    "/tban",
-    "/unban",
-    "/mute",
-    "/tmute",
-    "/unmute",
-    "/kick",
-    "/warn",
-  ]);
-
-  if (needsRestrictRight.has(cmd)) {
-    const right = await checkBotPermission(token, chatId, "can_restrict_members");
-    if (!right.ok) {
-      await safeSend(token, chatId, right.message);
-      return;
-    }
-  }
-
-  const target = await resolveTargetUser(token, message, parts);
-  if (!target.id) {
-    await safeSend(
-      token,
-      chatId,
-      `Specify a target by replying to a message or using ${cmd} @username / ${cmd} <user_id>.`
-    );
-    return;
-  }
-
-  if (await isChatAdmin(token, chatId, target.id)) {
-    await safeSend(
-      token,
-      chatId,
-      `${target.label} is an administrator; I cannot perform ${cmd} on an admin.`
-    );
-    return;
-  }
-
   try {
-    if (cmd === "/ban" || cmd === "/tban") {
-      const durSec = cmd === "/tban" ? parseDurationSeconds(target.args[0]) : null;
-      const reason = (durSec ? target.args.slice(1) : target.args).join(" ") || "No reason provided";
-      const body = { chat_id: chatId, user_id: target.id };
-      if (durSec) {
-        body.until_date = Math.floor(Date.now() / 1000) + durSec;
-      }
-      await tgApi(token, "banChatMember", body);
-      await safeSend(
-        token,
-        chatId,
-        `${target.label} ${durSec ? "temporarily " : ""}banned.\nReason: ${reason}`
-      );
-      return;
-    }
-
-    if (cmd === "/unban") {
-      await tgApi(token, "unbanChatMember", {
-        chat_id: chatId,
-        user_id: target.id,
-        only_if_banned: true,
-      });
-      await safeSend(token, chatId, `${target.label} unbanned.`);
-      return;
-    }
-
-    if (cmd === "/kick") {
-      const reason = target.args.join(" ") || "No reason provided";
-      await tgApi(token, "banChatMember", { chat_id: chatId, user_id: target.id });
-      await tgApi(token, "unbanChatMember", {
-        chat_id: chatId,
-        user_id: target.id,
-        only_if_banned: true,
-      });
-      await safeSend(token, chatId, `${target.label} kicked.\nReason: ${reason}`);
-      return;
-    }
-
-    if (cmd === "/mute" || cmd === "/tmute") {
-      const parsedDur = cmd === "/tmute" ? parseDurationSeconds(target.args[0]) : null;
-      const durSec = cmd === "/tmute" ? parsedDur ?? 600 : null;
-      const reason =
-        (parsedDur ? target.args.slice(1) : target.args).join(" ") || "No reason provided";
-      const body = {
-        chat_id: chatId,
-        user_id: target.id,
-        permissions: { can_send_messages: false },
-      };
-      if (durSec) {
-        body.until_date = Math.floor(Date.now() / 1000) + durSec;
-      }
-      await tgApi(token, "restrictChatMember", body);
-      await safeSend(
-        token,
-        chatId,
-        `${target.label} muted${durSec ? ` (${durSec}s)` : ""}.\nReason: ${reason}`
-      );
-      return;
-    }
-
-    if (cmd === "/unmute") {
-      await tgApi(token, "restrictChatMember", {
-        chat_id: chatId,
-        user_id: target.id,
-        permissions: {
-          can_send_messages: true,
-          can_send_audios: true,
-          can_send_documents: true,
-          can_send_photos: true,
-          can_send_videos: true,
-          can_send_video_notes: true,
-          can_send_voice_notes: true,
-          can_send_polls: true,
-          can_send_other_messages: true,
-          can_add_web_page_previews: true,
-        },
-      });
-      await safeSend(token, chatId, `${target.label} unmuted.`);
-      return;
-    }
-
-    const warnKey = `warns:${chatId}:${target.id}`;
-    const warns = (await storeGet(warnKey)) || [];
-
-    if (cmd === "/warn") {
-      const reason = target.args.join(" ") || "Warning";
-      warns.push({ reason, at: Date.now() });
-      await storeSet(warnKey, warns);
-
-      if (warns.length >= 3) {
-        await tgApi(token, "banChatMember", { chat_id: chatId, user_id: target.id });
-        await storeSet(warnKey, []);
-        await safeSend(
-          token,
-          chatId,
-          `${target.label} banned after reaching 3/3 warnings.`
-        );
-        return;
-      }
-
-      await safeSend(
-        token,
-        chatId,
-        `Warning (${warns.length}/3) issued to ${target.label}.\nReason: ${reason}`
-      );
-      return;
-    }
-
-    if (cmd === "/warns") {
-      if (!warns.length) {
-        await safeSend(token, chatId, `${target.label} has no warnings.`);
-        return;
-      }
-      const list = warns.map((w, idx) => `${idx + 1}. ${w.reason}`).join("\n");
-      await safeSend(token, chatId, `Warnings for ${target.label} (${warns.length}/3):\n${list}`);
-      return;
-    }
-
-    if (cmd === "/rmwarn") {
-      warns.pop();
-      await storeSet(warnKey, warns);
-      await safeSend(token, chatId, `Latest warning removed (${warns.length}/3).`);
-      return;
-    }
-
-    if (cmd === "/resetwarn") {
-      await storeSet(warnKey, []);
-      await safeSend(token, chatId, `All warnings cleared for ${target.label}.`);
-    }
-  } catch (err) {
-    await safeSend(token, chatId, `Action failed: ${err.message}`);
+    const res = await tgApi(token, "getChatAdministrators", { chat_id: chatId });
+    const admins = Array.isArray(res?.result) ? res.result : [];
+    adminCache.set(chatId, { ts: now, admins });
+    return admins;
+  } catch {
+    return cached?.admins || [];
   }
 }
 
-async function resolveTargetUser(token, message, parts) {
-  const replied = message.reply_to_message?.from;
-  if (replied?.id) {
-    return {
-      id: replied.id,
-      label: replied.username ? `@${replied.username}` : `${replied.id}`,
-      args: parts.slice(1),
-    };
-  }
-
-  const firstArg = (parts[1] || "").trim();
-  if (/^\d+$/.test(firstArg)) {
-    return { id: Number(firstArg), label: firstArg, args: parts.slice(2) };
-  }
-
-  if (/^@[a-zA-Z0-9_]{3,}$/.test(firstArg)) {
-    try {
-      const chatRes = await tgApi(token, "getChat", { chat_id: firstArg });
-      if (chatRes?.result?.id) {
-        return { id: chatRes.result.id, label: firstArg, args: parts.slice(2) };
-      }
-    } catch {}
-  }
-
-  return { id: null, label: "", args: parts.slice(1) };
-}
-
-function parseDurationSeconds(raw) {
-  const match = String(raw || "").trim().match(/^(\d+)([smhdw])$/i);
-  if (!match) return null;
-  const mult = { s: 1, m: 60, h: 3600, d: 86400, w: 604800 };
-  return Number(match[1]) * mult[match[2].toLowerCase()];
-}
-
-async function isChatAdmin(token, chatId, userId) {
+async function isChatAdmin(token, chatId, userId, senderChat = null, cfg = null) {
+  if (!userId) return false;
+  if (senderChat && senderChat.id === chatId && cfg?.anonAdmin) return true;
+  const admins = await getChatAdminsCached(token, chatId);
+  if (admins.some((a) => a.user?.id === userId)) return true;
   try {
     const res = await tgApi(token, "getChatMember", { chat_id: chatId, user_id: userId });
     return res?.result?.status === "creator" || res?.result?.status === "administrator";
@@ -673,10 +2176,12 @@ async function isChatAdmin(token, chatId, userId) {
   }
 }
 
-async function safeSend(token, chatId, text, replyMarkup) {
+async function safeSend(token, chatId, text, replyMarkup, replyToMessageId, protectContent = false) {
   try {
     const payload = { chat_id: chatId, text };
     if (replyMarkup) payload.reply_markup = replyMarkup;
+    if (replyToMessageId) payload.reply_to_message_id = replyToMessageId;
+    if (protectContent) payload.protect_content = true;
     await tgApi(token, "sendMessage", payload);
   } catch (err) {
     console.error("safeSend failed:", err.message);
