@@ -151,14 +151,14 @@ const HELP_CATEGORIES = {
     body: [
       "<b>🔒 Locks &amp; Allowlist (52 Types)</b>",
       "──────────────────────",
-      "• <b>/lock</b> &lt;type(s)&gt; [### reason {action}] — Lock media or text types.",
-      "• <b>/unlock</b> &lt;type(s)&gt; — Unlock media or text types.",
+      "• <b>/lock</b> &lt;type(s)&gt; [### reason {action}] — Lock content or text types.",
+      "• <b>/unlock</b> &lt;type(s)&gt; — Unlock content or text types.",
       "• <b>/lockall</b> • <b>/unlockall</b> — Lock or unlock entire chat for members.",
       "• <b>/locks</b> [list] • <b>/locktypes</b> • <b>/lockwarns</b> &lt;on|off&gt;",
       "• <b>/allowlist</b> [item|emojipack:&lt;&gt;] • <b>/rmallowlist</b> • <b>/rmallowlistall</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/lock audio voice sticker</code> • <code>/lockall</code> • <code>/unlockall</code>"
+      "<code>/lock all</code> • <code>/lockall</code> • <code>/unlockall</code>"
     ].join("\n")
   },
   "cc:c:flood": {
@@ -198,7 +198,7 @@ const HELP_CATEGORIES = {
     body: [
       "<b>💬 Auto-Reply Filters</b>",
       "──────────────────────",
-      "• <b>/filter</b> &lt;trigger&gt; [text | reply media] — Save auto-reply.",
+      "• <b>/filter</b> &lt;trigger&gt; [reply] — Save auto-reply from text or replied item.",
       "• Supports <code>exact:</code>, <code>prefix:</code>, <code>(a, b)</code>, <code>%%%</code> variants, fillings &amp; buttons.",
       "• <b>/filters</b> — List active filters.",
       "• <b>/stop</b> &lt;trigger&gt; — Delete a filter.",
@@ -212,7 +212,7 @@ const HELP_CATEGORIES = {
     body: [
       "<b>📝 Saved Notes</b>",
       "──────────────────────",
-      "• <b>/save</b> &lt;name&gt; [text | reply media] — Save a note.",
+      "• <b>/save</b> &lt;name&gt; [content] — Save a note from text or replied item.",
       "• <b>/get</b> &lt;name&gt; [noformat] or <b>#&lt;name&gt;</b> — Show saved note.",
       "• <b>/notes</b> — List saved notes.",
       "• <b>/clear</b> &lt;name&gt; — Delete a note.",
@@ -226,9 +226,9 @@ const HELP_CATEGORIES = {
     body: [
       "<b>👋 Welcome &amp; Goodbye</b>",
       "──────────────────────",
-      "• <b>/setwelcome</b> [text | reply media] — Set welcome message.",
+      "• <b>/setwelcome</b> [text | reply] — Set welcome message.",
       "• <b>/welcome</b> &lt;on|off|noformat&gt; • <b>/resetwelcome</b> • <b>/cleanwelcome</b> &lt;on|off&gt;",
-      "• <b>/setgoodbye</b> [text | reply media] — Set goodbye message.",
+      "• <b>/setgoodbye</b> [text | reply] — Set goodbye message.",
       "• <b>/goodbye</b> &lt;on|off|noformat&gt; • <b>/resetgoodbye</b>",
       "",
       "<b>💡 Examples:</b>",
@@ -1276,7 +1276,7 @@ function buildDuplicateSignature(msg) {
   const txt = (msg.text || msg.caption || "").trim().toLowerCase();
   if (txt) return `txt:${txt}`;
   const m = extractMediaFromMessage(msg);
-  if (m?.file_id) return `media:${m.type}:${m.file_id}`;
+  if (m?.file_id) return `item:${m.type}:${m.file_id}`;
   return "";
 }
 
@@ -2146,7 +2146,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      filters.length ? `Active filters:\n${filters.map((f) => `- ${f.trigger}${f.media ? ` [${f.media.type}]` : ""}`).join("\n")}` : "No filters configured.",
+      filters.length ? `Active filters:\n${filters.map((f) => `- ${f.trigger}`).join("\n")}` : "No filters configured.",
       undefined,
       message.message_id
     );
@@ -2226,7 +2226,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
 
   const adminCommands = new Set([
     "/promote", "/demote", "/title", "/admincache", "/anonadmin", "/adminerror", "/reports",
-    "/modstats", "/resetmodstats", "/watchlist", "/unwatchlist", "/checkuser",
+    "/adminrank", "/modstats", "/resetmodstats", "/watchlist", "/unwatchlist", "/checkuser",
     "/karmaenable", "/setkarma", "/resetkarma",
     "/approve", "/unapprove", "/approved", "/unapproveall",
     "/setflood", "/setfloodtimer", "/floodmode", "/clearflood",
@@ -3117,7 +3117,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const finalContent = content.trim() || (!pickedMedia ? replyCaption : "");
 
     if (!triggers.length || (!finalContent && !pickedMedia)) {
-      await replyAdmin("Usage: /filter <trigger> <reply text> (or reply to media/text with /filter <trigger>)");
+      await replyAdmin("Usage: /filter <trigger> <reply text> (or reply to a message with /filter <trigger>)");
       return;
     }
     const filters = (await storeGet(`filters_v2:${chatId}`)) || [];
@@ -3128,7 +3128,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       else filters.push(entry);
     }
     await storeSet(`filters_v2:${chatId}`, filters);
-    await replyAdmin(`Filter saved: ${triggers.join(", ")}${pickedMedia ? ` [${pickedMedia.type}]` : ""}`);
+    await replyAdmin(`Filter saved: ${triggers.join(", ")}`);
     return;
   }
 
@@ -3157,7 +3157,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
           : "";
 
     if (!match) {
-      await replyAdmin("Usage: /save <note_name> [content] (or reply to media/text)");
+      await replyAdmin("Usage: /save <note_name> [content] (or reply to a message)");
       return;
     }
     const noteName = match[1].trim().toLowerCase();
@@ -3165,7 +3165,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const finalContent = inlineContent || (!pickedMedia ? replyCaption : "");
 
     if (!finalContent && !pickedMedia) {
-      await replyAdmin("Usage: /save <note_name> [content] (or reply to media/text)");
+      await replyAdmin("Usage: /save <note_name> [content] (or reply to a message)");
       return;
     }
 
@@ -3174,7 +3174,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       ? { content: finalContent, media: pickedMedia }
       : finalContent;
     await storeSet(`notes:${chatId}`, notes);
-    await replyAdmin(`Note saved as #${noteName}${pickedMedia ? ` [${pickedMedia.type}]` : ""}`);
+    await replyAdmin(`Note saved as #${noteName}`);
     return;
   }
 
@@ -3194,8 +3194,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/welcome") {
     if ((cmdArgs[0] || "").toLowerCase() === "noformat") {
       const raw = cfg.greetings.welcomeText || "";
-      const mediaTag = cfg.greetings.welcomeMedia ? `\n[Media: ${cfg.greetings.welcomeMedia.type}]` : "";
-      await replyAdmin(`${raw}${mediaTag}` || "No welcome message set.");
+      await replyAdmin(raw || "No welcome message set.");
       return;
     }
     const flag = parseBoolFlag(cmdArgs[0]);
@@ -3212,8 +3211,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/goodbye") {
     if ((cmdArgs[0] || "").toLowerCase() === "noformat") {
       const raw = cfg.greetings.goodbyeText || "";
-      const mediaTag = cfg.greetings.goodbyeMedia ? `\n[Media: ${cfg.greetings.goodbyeMedia.type}]` : "";
-      await replyAdmin(`${raw}${mediaTag}` || "No goodbye message set.");
+      await replyAdmin(raw || "No goodbye message set.");
       return;
     }
     const flag = parseBoolFlag(cmdArgs[0]);
@@ -3253,7 +3251,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const nextText = cmdArgsStr || replyCaption || (pickedMedia ? "" : null);
 
     if (nextText === null && !pickedMedia) {
-      await replyAdmin(`Usage: ${cmd} <text> (or reply to a photo/GIF/video/sticker with ${cmd})`);
+      await replyAdmin(`Usage: ${cmd} <text> (or reply to a message with ${cmd})`);
       return;
     }
 
@@ -3270,9 +3268,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
 
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(
-      `${isWel ? "Welcome" : "Goodbye"} message updated and enabled${pickedMedia ? ` with ${pickedMedia.type}` : ""}.`
-    );
+    await replyAdmin(`${isWel ? "Welcome" : "Goodbye"} message updated and enabled.`);
     return;
   }
 
@@ -3895,4 +3891,3 @@ async function tgApi(token, method, body) {
   }
   return data;
 }
-
