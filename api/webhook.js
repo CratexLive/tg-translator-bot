@@ -181,7 +181,7 @@ const HELP_CATEGORIES = {
       "<b>Examples:</b>",
       "• /setflood 3",
       "• /setfloodtimer 8 10s",
-      "• /floodmode ban",
+      "• /floodmode kick",
       "• /clearflood on"
     ].join("\n")
   },
@@ -1266,6 +1266,21 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
   }
 }
 
+async function runEnforcementAction(token, chatId, sender, mode, durationSeconds, reason, logChatId) {
+  if (!mode || mode === "nothing") return;
+  if (mode === "warn") {
+    await applyWarning(token, chatId, sender, reason, await getChatConfig(chatId), null, logChatId);
+    return;
+  }
+  if (!PUNISHMENT_ACTIONS.has(mode)) return;
+  try {
+    const resText = await applyPunishment(token, chatId, sender, mode, durationSeconds || 0, reason, logChatId);
+    await safeSend(token, chatId, resText);
+  } catch (err) {
+    await safeSend(token, chatId, `Action (${mode}) failed for ${sender?.first_name || sender?.id}: ${err.message}`);
+  }
+}
+
 async function handleMessage(message, token, logChatId = "") {
   const chatId = message.chat.id;
   const isGroup = message.chat.type === "group" || message.chat.type === "supergroup";
@@ -1485,11 +1500,17 @@ async function handleMessage(message, token, logChatId = "") {
 
       await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
       const lConf = cfg.lockConfig[lType];
-      if (lConf?.action && PUNISHMENT_ACTIONS.has(lConf.action)) {
-        const resText = await applyPunishment(token, chatId, sender, lConf.action, lConf.durationSeconds || 0, lConf.reason || "", logChatId);
-        await safeSend(token, chatId, resText);
-      } else if (lConf?.action === "warn" || cfg.lockWarns) {
-        await applyWarning(token, chatId, sender, lConf?.reason || `Locked item: ${lType}`, cfg, null, logChatId);
+      const action = lConf?.action || (cfg.lockWarns ? "warn" : null);
+      if (action) {
+        await runEnforcementAction(
+          token,
+          chatId,
+          sender,
+          action,
+          lConf?.durationSeconds || 0,
+          lConf?.reason || `Locked item: ${lType}`,
+          logChatId
+        );
       }
       return;
     }
@@ -1501,12 +1522,7 @@ async function handleMessage(message, token, logChatId = "") {
           await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
         }
         const reason = hit.reason || cfg.blocklistReason || `Blocklist match: ${hit.trigger}`;
-        if (cfg.blocklistMode === "warn") {
-          await applyWarning(token, chatId, sender, reason, cfg, null, logChatId);
-        } else if (PUNISHMENT_ACTIONS.has(cfg.blocklistMode)) {
-          const resText = await applyPunishment(token, chatId, sender, cfg.blocklistMode, 0, reason, logChatId);
-          await safeSend(token, chatId, resText);
-        }
+        await runEnforcementAction(token, chatId, sender, cfg.blocklistMode, 0, reason, logChatId);
         return;
       }
     }
@@ -1543,24 +1559,15 @@ async function handleMessage(message, token, logChatId = "") {
         }
 
         const action = PUNISHMENT_ACTIONS.has(cfg.flood.action) ? cfg.flood.action : "ban";
-        try {
-          const resText = await applyPunishment(
-            token,
-            chatId,
-            sender,
-            action,
-            cfg.flood.durationSeconds || 0,
-            "Antiflood limit reached",
-            logChatId
-          );
-          await safeSend(token, chatId, resText);
-        } catch (err) {
-          await safeSend(
-            token,
-            chatId,
-            `Flood detected for ${sender?.first_name || senderId}, but ${action} failed: ${err.message}`
-          );
-        }
+        await runEnforcementAction(
+          token,
+          chatId,
+          sender,
+          action,
+          cfg.flood.durationSeconds || 0,
+          "Antiflood limit reached",
+          logChatId
+        );
         return;
       }
     }
@@ -3190,4 +3197,3 @@ async function tgApi(token, method, body) {
   }
   return data;
 }
-
