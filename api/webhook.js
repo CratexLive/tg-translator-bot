@@ -44,8 +44,8 @@ const HELP_CATEGORIES = {
       "• /adminerror &lt;yes/no/on/off&gt; — Show or hide non-admin error replies.",
       "",
       "<b>Examples:</b>",
-      "• /promote @player 10",
-      "• /title @player 10 Mod",
+      "• /promote @player10",
+      "• /title @player10 Moderator",
       "• /anonadmin on"
     ].join("\n")
   },
@@ -209,15 +209,18 @@ const HELP_CATEGORIES = {
   "cc:c:filters": {
     title: "Filters",
     body: [
-      "<b>Auto-Reply Filters</b>",
+      "<b>Auto-Reply Filters (Text &amp; Media)</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
-      "• /filter &lt;trigger&gt; &lt;reply&gt; — Create trigger (supports exact:, prefix:, (a, b), %%%, fillings &amp; buttons).",
+      "• /filter &lt;trigger&gt; [reply] — Save text, photo, GIF, video, sticker, audio, voice, or document (by reply or text).",
+      "• Supports exact:, prefix:, (a, b), %%% random variants, {admin}, {user}, {allow_bot}, {protect}, {replytag}, fillings &amp; buttons.",
+      "• Append <code>force</code> (admins) or <code>noformat</code> when triggering.",
       "• /filters — List active filter triggers in chat.",
       "• /stop &lt;trigger&gt; — Delete a filter trigger.",
       "",
       "<b>Examples:</b>",
       "• /filter squad Check pinned squad list!",
+      "• (reply to photo/sticker/GIF) /filter guru",
       "• /filter exact:hi Hello {first}!",
       "• /filter (live, stream) Watch on [Portal](buttonurl://example.com)"
     ].join("\n")
@@ -225,10 +228,10 @@ const HELP_CATEGORIES = {
   "cc:c:notes": {
     title: "Notes",
     body: [
-      "<b>Saved Chat Notes</b>",
+      "<b>Saved Chat Notes (Text &amp; Media)</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
-      "• /save &lt;name&gt; &lt;content&gt; — Save a note under a short name.",
+      "• /save &lt;name&gt; [content] — Save text or replied media (photo/GIF/video/sticker/doc/audio/voice).",
       "• /get &lt;name&gt; [noformat] — Fetch saved note (or raw text).",
       "• #&lt;name&gt; — Quick shortcut to send saved note.",
       "• /notes — List all saved note names.",
@@ -236,8 +239,8 @@ const HELP_CATEGORIES = {
       "",
       "<b>Examples:</b>",
       "• /save schedule Match starts at 7:30 PM IST",
-      "• #schedule",
-      "• /clear schedule"
+      "• (reply to photo) /save poster Match Poster",
+      "• #schedule"
     ].join("\n")
   },
   "cc:c:greetings": {
@@ -543,15 +546,15 @@ function buildStartIntro(botUsername = "") {
 
   return {
     text: [
-      `<b>${BOT_NAME} — Moderation &amp; Community Engine</b>`,
+      `<b>${BOT_NAME} — Moderation &amp; Community Suite</b>`,
       "",
-      "Fast serverless group management with persistent configuration, granular enforcement, and zero bloat.",
+      "Engineered for high-traffic communities, match chats, and moderated groups with instant webhook execution and persistent Redis storage.",
       "",
-      "• <b>Access &amp; Admin:</b> Promotions, titles, admin cache, anonymous admin bypass &amp; approvals",
-      "• <b>Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 locks, allowlists, flood &amp; blocklists",
-      "• <b>Automation:</b> Welcomes/goodbyes with media &amp; fillings, pins, purges, rules, filters, notes, raid/night/slow controls &amp; auto-approval",
+      "• <b>Admin &amp; Access:</b> Promotions, custom ranks, admin cache, anonymous admin bypass &amp; user approvals",
+      "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 content locks, allowlists, antiflood &amp; wildcard blocklists",
+      "• <b>Smart Automation:</b> Media/text greetings, pin tools, bulk purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
       "",
-      "Tap <b>Help</b> below to open all command categories."
+      "Select <b>Help</b> below to inspect every command category."
     ].join("\n"),
     replyMarkup: {
       inline_keyboard: [
@@ -628,8 +631,76 @@ function extractMediaFromMessage(msg) {
   if (msg.sticker?.file_id) {
     return { type: "sticker", file_id: msg.sticker.file_id };
   }
+  if (msg.audio?.file_id) {
+    return { type: "audio", file_id: msg.audio.file_id };
+  }
+  if (msg.voice?.file_id) {
+    return { type: "voice", file_id: msg.voice.file_id };
+  }
   if (msg.document?.file_id) {
     return { type: "document", file_id: msg.document.file_id };
+  }
+  return null;
+}
+
+async function sendStoredMedia(token, chatId, media, caption, replyMarkup, replyToMessageId, protectContent = false) {
+  if (!media?.file_id) return null;
+  const base = { chat_id: chatId };
+  if (replyMarkup) base.reply_markup = replyMarkup;
+  if (replyToMessageId) base.reply_to_message_id = replyToMessageId;
+  if (protectContent) base.protect_content = true;
+
+  if (media.type === "animation") {
+    return await safeTgApi(token, "sendAnimation", {
+      ...base,
+      animation: media.file_id,
+      ...(caption ? { caption } : {}),
+    });
+  }
+  if (media.type === "video") {
+    return await safeTgApi(token, "sendVideo", {
+      ...base,
+      video: media.file_id,
+      ...(caption ? { caption } : {}),
+    });
+  }
+  if (media.type === "photo") {
+    return await safeTgApi(token, "sendPhoto", {
+      ...base,
+      photo: media.file_id,
+      ...(caption ? { caption } : {}),
+    });
+  }
+  if (media.type === "audio") {
+    return await safeTgApi(token, "sendAudio", {
+      ...base,
+      audio: media.file_id,
+      ...(caption ? { caption } : {}),
+    });
+  }
+  if (media.type === "voice") {
+    return await safeTgApi(token, "sendVoice", {
+      ...base,
+      voice: media.file_id,
+      ...(caption ? { caption } : {}),
+    });
+  }
+  if (media.type === "document") {
+    return await safeTgApi(token, "sendDocument", {
+      ...base,
+      document: media.file_id,
+      ...(caption ? { caption } : {}),
+    });
+  }
+  if (media.type === "sticker") {
+    const sent = await safeTgApi(token, "sendSticker", {
+      ...base,
+      sticker: media.file_id,
+    });
+    if (caption) {
+      await safeSend(token, chatId, caption, replyMarkup, replyToMessageId, protectContent);
+    }
+    return sent;
   }
   return null;
 }
@@ -774,51 +845,10 @@ async function sendGreetingPayload(token, chatId, cfg, kind, member, chat) {
   const fallbackText = isWelcome
     ? `Welcome ${member?.first_name || "User"}!`
     : `Goodbye ${member?.first_name || "User"}!`;
-  const finalText = text || fallbackText;
+  const finalText = text || (media?.file_id ? "" : fallbackText);
 
   if (media?.file_id) {
-    if (media.type === "animation") {
-      return await safeTgApi(token, "sendAnimation", {
-        chat_id: chatId,
-        animation: media.file_id,
-        caption: finalText,
-        reply_markup: replyMarkup,
-      });
-    }
-    if (media.type === "video") {
-      return await safeTgApi(token, "sendVideo", {
-        chat_id: chatId,
-        video: media.file_id,
-        caption: finalText,
-        reply_markup: replyMarkup,
-      });
-    }
-    if (media.type === "photo") {
-      return await safeTgApi(token, "sendPhoto", {
-        chat_id: chatId,
-        photo: media.file_id,
-        caption: finalText,
-        reply_markup: replyMarkup,
-      });
-    }
-    if (media.type === "sticker") {
-      const stickerSent = await safeTgApi(token, "sendSticker", {
-        chat_id: chatId,
-        sticker: media.file_id,
-      });
-      if (text) {
-        await safeSend(token, chatId, finalText, replyMarkup);
-      }
-      return stickerSent;
-    }
-    if (media.type === "document") {
-      return await safeTgApi(token, "sendDocument", {
-        chat_id: chatId,
-        document: media.file_id,
-        caption: finalText,
-        reply_markup: replyMarkup,
-      });
-    }
+    return await sendStoredMedia(token, chatId, media, finalText, replyMarkup);
   }
 
   return await safeSend(token, chatId, finalText, replyMarkup);
@@ -1106,10 +1136,13 @@ function parseFilterInput(rawArgsText) {
       }
     }
   }
-  return { triggers, content: rest };
+  return { triggers: triggers.filter(Boolean), content: rest };
 }
 
-async function sendFormattedMessage(token, chatId, message, rawContent, isNoFormat = false, isForce = false, senderIsAdmin = false) {
+async function sendEntryResponse(token, chatId, message, entry, isNoFormat = false, isForce = false, senderIsAdmin = false) {
+  const rawContent = typeof entry === "string" ? entry : (entry?.content || "");
+  const media = typeof entry === "object" && entry ? entry.media : null;
+
   const hasAdminFlag = /\{admin\}/i.test(rawContent);
   const hasUserFlag = /\{user\}/i.test(rawContent);
   const hasProtect = /\{protect\}/i.test(rawContent);
@@ -1136,16 +1169,26 @@ async function sendFormattedMessage(token, chatId, message, rawContent, isNoForm
     .replace(/\{replytag\}/gi, "")
     .trim();
 
+  const replyToId = hasReplyTag && message.reply_to_message
+    ? message.reply_to_message.message_id
+    : message.message_id;
+
   if (isNoFormat) {
-    await safeSend(token, chatId, chosen, undefined, message.message_id);
+    if (media?.file_id) {
+      await sendStoredMedia(token, chatId, media, chosen, undefined, replyToId, hasProtect);
+    } else {
+      await safeSend(token, chatId, chosen || " ", undefined, replyToId, hasProtect);
+    }
     return true;
   }
 
   const filled = applyFillings(chosen, message.from, message.chat);
   const { text, replyMarkup } = extractButtonsFromText(filled);
-  const replyToId = hasReplyTag && message.reply_to_message
-    ? message.reply_to_message.message_id
-    : message.message_id;
+
+  if (media?.file_id) {
+    await sendStoredMedia(token, chatId, media, text, replyMarkup, replyToId, hasProtect);
+    return true;
+  }
 
   await safeSend(token, chatId, text || " ", replyMarkup, replyToId, hasProtect);
   return true;
@@ -1586,7 +1629,7 @@ async function handleMessage(message, token, logChatId = "") {
     const noteName = normalizedText.slice(1).toLowerCase();
     const notes = (await storeGet(`notes:${chatId}`)) || {};
     if (notes[noteName]) {
-      await sendFormattedMessage(token, chatId, message, notes[noteName], false, false, senderIsAdmin);
+      await sendEntryResponse(token, chatId, message, notes[noteName], false, false, senderIsAdmin);
     }
     return;
   }
@@ -1602,7 +1645,7 @@ async function handleMessage(message, token, logChatId = "") {
       await safeSend(token, chatId, "Note not found.");
       return;
     }
-    await sendFormattedMessage(
+    await sendEntryResponse(
       token,
       chatId,
       message,
@@ -1690,7 +1733,7 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      filters.length ? `Active filters:\n${filters.map((f) => `- ${f.trigger}`).join("\n")}` : "No filters configured."
+      filters.length ? `Active filters:\n${filters.map((f) => `- ${f.trigger}${f.media ? ` [${f.media.type}]` : ""}`).join("\n")}` : "No filters configured."
     );
     return;
   }
@@ -1768,14 +1811,16 @@ async function handleMessage(message, token, logChatId = "") {
     "/promote", "/demote", "/title", "/admincache", "/anonadmin", "/adminerror", "/reports",
     "/approve", "/unapprove", "/approved", "/unapproveall",
     "/setflood", "/setfloodtimer", "/floodmode", "/clearflood",
-    "/raidmode", "/autoraid", "/raidactiontime", "/slowmode", "/nightmode", "/setnightmode",
+    "/raidmode", "/autoraid", "/raidactiontime", "/slowmode", "/nightmode", "setnightmode",
+    "/setnightmode",
     "/addblocklist", "/rmblocklist", "/unblocklistall", "/blocklistmode",
     "/blocklistdelete", "/setblocklistreason", "/resetblocklistreason",
     "/cleancommand", "/keepcommand",
     "/lock", "/unlock", "/lockwarns", "/allowlist", "/rmallowlist", "/rmallowlistall",
     "/filter", "/stop", "/save", "/clear",
     "/welcome", "/goodbye", "/setwelcome", "/resetwelcome", "/setgoodbye", "/resetgoodbye", "/cleanwelcome",
-    "/pin", "/permapin", "/unpin", "/unpinall", "/antichannelpin", "/cleanlinked",
+    "/pin", "/permapin", "/unpin", "/unpinall", "/antichannelpin", "cleanlinked",
+    "/cleanlinked",
     "/purge", "/spurge", "/del", "/purgefrom", "/purgeto",
     "/setrules", "/privaterules", "/resetrules", "/setrulesbutton", "/resetrulesbutton",
     "/warn", "/dwarn", "/swarn", "/warns", "/rmwarn", "/resetwarn", "/resetallwarns",
@@ -1806,10 +1851,10 @@ async function handleMessage(message, token, logChatId = "") {
     const queryText = forceMatch ? forceMatch[1].trim() : noFmtMatch ? noFmtMatch[1].trim() : rawText;
 
     for (const flt of filters) {
-      const allowBot = /\{allow_bot\}/i.test(flt.content);
+      const allowBot = /\{allow_bot\}/i.test(flt.content || "");
       if (sender?.is_bot && !allowBot) continue;
       if (matchFilterTrigger(flt.trigger, queryText)) {
-        const sent = await sendFormattedMessage(token, chatId, message, flt.content, isNoFormat, isForce, senderIsAdmin);
+        const sent = await sendEntryResponse(token, chatId, message, flt, isNoFormat, isForce, senderIsAdmin);
         if (sent) break;
       }
     }
@@ -2334,18 +2379,34 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
 
   if (cmd === "/filter") {
     const { triggers, content } = parseFilterInput(cmdArgsStr);
-    if (!triggers.length || !content.trim()) {
-      await safeSend(token, chatId, "Usage: /filter <trigger> <reply text>");
+    const repliedMedia = extractMediaFromMessage(message.reply_to_message);
+    const directMedia = extractMediaFromMessage(message);
+    const pickedMedia = repliedMedia || directMedia;
+    const replyCaption =
+      typeof message.reply_to_message?.caption === "string"
+        ? message.reply_to_message.caption.trim()
+        : typeof message.reply_to_message?.text === "string"
+          ? message.reply_to_message.text.trim()
+          : "";
+    const finalContent = content.trim() || (!pickedMedia ? replyCaption : "");
+
+    if (!triggers.length || (!finalContent && !pickedMedia)) {
+      await safeSend(token, chatId, "Usage: /filter <trigger> <reply text> (or reply to media/text with /filter <trigger>)");
       return;
     }
     const filters = (await storeGet(`filters_v2:${chatId}`)) || [];
     for (const trig of triggers) {
       const idx = filters.findIndex((f) => f.trigger === trig);
-      if (idx >= 0) filters[idx] = { trigger: trig, content };
-      else filters.push({ trigger: trig, content });
+      const entry = { trigger: trig, content: finalContent, media: pickedMedia || null };
+      if (idx >= 0) filters[idx] = entry;
+      else filters.push(entry);
     }
     await storeSet(`filters_v2:${chatId}`, filters);
-    await safeSend(token, chatId, `Filter saved: ${triggers.join(", ")}`);
+    await safeSend(
+      token,
+      chatId,
+      `Filter saved: ${triggers.join(", ")}${pickedMedia ? ` [${pickedMedia.type}]` : ""}`
+    );
     return;
   }
 
@@ -2362,17 +2423,40 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   }
 
   if (cmd === "/save") {
-    const match = cleanLine.match(/^\/save\s+([a-zA-Z0-9_-]+)\s+([\s\S]+)$/i);
+    const match = cleanLine.match(/^\/save\s+([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/i);
+    const repliedMedia = extractMediaFromMessage(message.reply_to_message);
+    const directMedia = extractMediaFromMessage(message);
+    const pickedMedia = repliedMedia || directMedia;
+    const replyCaption =
+      typeof message.reply_to_message?.caption === "string"
+        ? message.reply_to_message.caption.trim()
+        : typeof message.reply_to_message?.text === "string"
+          ? message.reply_to_message.text.trim()
+          : "";
+
     if (!match) {
-      await safeSend(token, chatId, "Usage: /save <note_name> <content>");
+      await safeSend(token, chatId, "Usage: /save <note_name> [content] (or reply to media/text)");
       return;
     }
     const noteName = match[1].trim().toLowerCase();
-    const content = match[2].trim();
+    const inlineContent = (match[2] || "").trim();
+    const finalContent = inlineContent || (!pickedMedia ? replyCaption : "");
+
+    if (!finalContent && !pickedMedia) {
+      await safeSend(token, chatId, "Usage: /save <note_name> [content] (or reply to media/text)");
+      return;
+    }
+
     const notes = (await storeGet(`notes:${chatId}`)) || {};
-    notes[noteName] = content;
+    notes[noteName] = pickedMedia
+      ? { content: finalContent, media: pickedMedia }
+      : finalContent;
     await storeSet(`notes:${chatId}`, notes);
-    await safeSend(token, chatId, `Note saved as #${noteName}`);
+    await safeSend(
+      token,
+      chatId,
+      `Note saved as #${noteName}${pickedMedia ? ` [${pickedMedia.type}]` : ""}`
+    );
     return;
   }
 
