@@ -50,6 +50,7 @@ const LANGUAGES = {
 };
 
 const DEFAULT_LANG = "auto";
+const GEMINI_MODEL = "gemini-3.8-flash";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -198,7 +199,7 @@ async function handleText(chatId, text, token, apiKey) {
 
 async function translateWithGemini(text, langCode, apiKey) {
   const target = LANGUAGES[langCode] || LANGUAGES[DEFAULT_LANG];
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const prompt = `${target.rule}
 Return ONLY the translated text without quotes or extra notes.
