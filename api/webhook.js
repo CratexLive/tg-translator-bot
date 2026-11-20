@@ -35,19 +35,19 @@ const HELP_CATEGORIES = {
     body: [
       "<b>🛡️ Admin Management &amp; Rankings</b>",
       "──────────────────────",
-      "• <b>/promote</b> [reply | @user | ID] — Promote a member to admin.",
-      "• <b>/demote</b> [reply | @user | ID] — Demote an admin to member.",
-      "• <b>/title</b> [reply | @user | ID] &lt;title&gt; — Set admin badge (max 16 chars).",
-      "• <b>/adminlist</b> — Show all group admins and titles.",
-      "• <b>/admincache</b> — Refresh cached admin list.",
-      "• <b>/anonadmin</b> &lt;on|off&gt; — Bypass checks for anonymous admins.",
-      "• <b>/adminerror</b> &lt;on|off&gt; — Show or hide non-admin notices.",
-      "• <b>/adminrank</b> — View leaderboard of most active admins.",
-      "• <b>/modstats</b> [reply | @user | ID] — View detailed admin activity &amp; mod counts.",
-      "• <b>/resetmodstats</b> — Reset admin activity &amp; moderation rankings.",
+      "• <b>/promote</b> [reply | @user | ID] — <b>Promote a member to admin.</b>",
+      "• <b>/demote</b> [reply | @user | ID] — <b>Demote an admin to member.</b>",
+      "• <b>/title</b> [reply | @user | ID] &lt;title&gt; — <b>Set admin badge (max 16 chars).</b>",
+      "• <b>/adminlist</b> — <b>Show all group admins and titles.</b>",
+      "• <b>/admincache</b> — <b>Refresh cached admin list.</b>",
+      "• <b>/anonadmin</b> &lt;on|off&gt; — <b>Bypass checks for anonymous admins.</b>",
+      "• <b>/adminerror</b> &lt;on|off&gt; — <b>Show or hide non-admin notices.</b>",
+      "• <b>/adminrank</b> — <b>View leaderboard of most active admins.</b>",
+      "• <b>/modstats</b> [reply | @user | ID] — <b>View detailed admin activity &amp; mod counts.</b>",
+      "• <b>/resetmodstats</b> — <b>Reset admin activity &amp; moderation rankings.</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/adminrank</code> • <code>/modstats @admin</code>"
+      "<b>/adminrank</b> • <b>/modstats @admin</b>"
     ].join("\n")
   },
   "cc:c:karma": {
@@ -55,15 +55,15 @@ const HELP_CATEGORIES = {
     body: [
       "<b>⭐ Member Karma &amp; Reputation</b>",
       "──────────────────────",
-      "• Reply to any member with <b>thanks</b>, <b>thank you</b>, <b>thx</b>, <b>ty</b>, or <b>+1</b> to award +1 Karma point.",
-      "• <b>/karma</b> [reply | @user | ID] — Check a member's karma points &amp; rank.",
-      "• <b>/topkarma</b> — Display the top 10 most helpful members in the chat.",
-      "• <b>/karmaenable</b> &lt;on|off&gt; — Enable or disable karma points in this group.",
-      "• <b>/setkarma</b> [reply | @user | ID] &lt;number&gt; — Set a member's karma score (admin).",
-      "• <b>/resetkarma</b> — Clear all karma points in the group (admin).",
+      "• <b>Reply to any member with thanks, thank you, thx, ty, or +1 to award +1 Karma point.</b>",
+      "• <b>/karma</b> [reply | @user | ID] — <b>Check a member's karma points &amp; rank.</b>",
+      "• <b>/topkarma</b> — <b>Display the top 10 most helpful members in the chat.</b>",
+      "• <b>/karmaenable</b> &lt;on|off&gt; — <b>Enable or disable karma points in this group.</b>",
+      "• <b>/setkarma</b> [reply | @user | ID] &lt;number&gt; — <b>Set a member's karma score (admin).</b>",
+      "• <b>/resetkarma</b> — <b>Clear all karma points in the group (admin).</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/karma</code> • <code>/topkarma</code> • <code>/karmaenable on</code>"
+      "<b>/karma</b> • <b>/topkarma</b> • <b>/karmaenable on</b>"
     ].join("\n")
   },
   "cc:c:approval": {
@@ -71,17 +71,17 @@ const HELP_CATEGORIES = {
     body: [
       "<b>✅ User Approvals &amp; Watchlist</b>",
       "──────────────────────",
-      "• <b>/approve</b> [reply | @user | ID] — Exempt user from locks, flood, blocklists &amp; restrictions.",
-      "• <b>/unapprove</b> [reply | @user | ID] — Remove approval exemption.",
-      "• <b>/approval</b> [reply | @user | ID] — Check approval status.",
-      "• <b>/approved</b> — List all approved user IDs.",
-      "• <b>/unapproveall</b> — Clear all approved users.",
-      "• <b>/watchlist</b> [reply | @user | ID] &lt;note&gt; — Add staff note on user.",
-      "• <b>/unwatchlist</b> [reply | @user | ID] — Remove user watchlist note.",
-      "• <b>/checkuser</b> [reply | @user | ID] — Inspect user status, warns, karma &amp; watchlist.",
+      "• <b>/approve</b> [reply | @user | ID] — <b>Exempt user from locks, flood, blocklists &amp; restrictions.</b>",
+      "• <b>/unapprove</b> [reply | @user | ID] — <b>Remove approval exemption.</b>",
+      "• <b>/approval</b> [reply | @user | ID] — <b>Check approval status.</b>",
+      "• <b>/approved</b> — <b>List all approved user IDs.</b>",
+      "• <b>/unapproveall</b> — <b>Clear all approved users.</b>",
+      "• <b>/watchlist</b> [reply | @user | ID] &lt;note&gt; — <b>Add staff note on user.</b>",
+      "• <b>/unwatchlist</b> [reply | @user | ID] — <b>Remove user watchlist note.</b>",
+      "• <b>/checkuser</b> [reply | @user | ID] — <b>Inspect user status, warns, karma &amp; watchlist.</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/approve @trusted_user</code> • <code>/watchlist @user Link spam watch</code>"
+      "<b>/approve @trusted_user</b> • <b>/watchlist @user Link spam watch</b>"
     ].join("\n")
   },
   "cc:c:bans": {
@@ -89,14 +89,14 @@ const HELP_CATEGORIES = {
     body: [
       "<b>🔨 Ban Controls</b>",
       "──────────────────────",
-      "• <b>/ban</b> [reply | @user | ID] [reason] — Ban a user permanently.",
-      "• <b>/dban</b> [reason] — Delete replied message and ban sender.",
-      "• <b>/sban</b> [reason] — Ban silently without reply.",
-      "• <b>/tban</b> [reply | @user | ID] &lt;time&gt; [reason] — Temp ban (s/m/h/d/w).",
-      "• <b>/unban</b> [reply | @user | ID] — Unban a user.",
+      "• <b>/ban</b> [reply | @user | ID] [reason] — <b>Ban a user permanently.</b>",
+      "• <b>/dban</b> [reason] — <b>Delete replied message and ban sender.</b>",
+      "• <b>/sban</b> [reason] — <b>Ban silently without reply.</b>",
+      "• <b>/tban</b> [reply | @user | ID] &lt;time&gt; [reason] — <b>Temp ban (s/m/h/d/w).</b>",
+      "• <b>/unban</b> [reply | @user | ID] — <b>Unban a user.</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/ban @spammer Spam links</code> • <code>/tban @user 2d</code>"
+      "<b>/ban @spammer Spam links</b> • <b>/tban @user 2d</b>"
     ].join("\n")
   },
   "cc:c:mutes": {
@@ -104,14 +104,14 @@ const HELP_CATEGORIES = {
     body: [
       "<b>🔇 Mute Controls</b>",
       "──────────────────────",
-      "• <b>/mute</b> [reply | @user | ID] [reason] — Mute a user.",
-      "• <b>/dmute</b> [reason] — Delete replied message and mute sender.",
-      "• <b>/smute</b> [reason] — Mute silently without reply.",
-      "• <b>/tmute</b> [reply | @user | ID] &lt;time&gt; [reason] — Temp mute (s/m/h/d/w).",
-      "• <b>/unmute</b> [reply | @user | ID] — Unmute a user.",
+      "• <b>/mute</b> [reply | @user | ID] [reason] — <b>Mute a user.</b>",
+      "• <b>/dmute</b> [reason] — <b>Delete replied message and mute sender.</b>",
+      "• <b>/smute</b> [reason] — <b>Mute silently without reply.</b>",
+      "• <b>/tmute</b> [reply | @user | ID] &lt;time&gt; [reason] — <b>Temp mute (s/m/h/d/w).</b>",
+      "• <b>/unmute</b> [reply | @user | ID] — <b>Unmute a user.</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/mute @user Flood</code> • <code>/tmute @user 30m</code>"
+      "<b>/mute @user Flood</b> • <b>/tmute @user 30m</b>"
     ].join("\n")
   },
   "cc:c:kicks": {
@@ -119,13 +119,13 @@ const HELP_CATEGORIES = {
     body: [
       "<b>👢 Kick Controls</b>",
       "──────────────────────",
-      "• <b>/kick</b> [reply | @user | ID] [reason] — Kick user from group.",
-      "• <b>/dkick</b> [reason] — Delete replied message and kick sender.",
-      "• <b>/skick</b> [reason] — Kick silently without reply.",
-      "• <b>/kickme</b> — Leave the group yourself.",
+      "• <b>/kick</b> [reply | @user | ID] [reason] — <b>Kick user from group.</b>",
+      "• <b>/dkick</b> [reason] — <b>Delete replied message and kick sender.</b>",
+      "• <b>/skick</b> [reason] — <b>Kick silently without reply.</b>",
+      "• <b>/kickme</b> — <b>Leave the group yourself.</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/kick @user Rule violation</code> • <code>/dkick</code>"
+      "<b>/kick @user Rule violation</b> • <b>/dkick</b>"
     ].join("\n")
   },
   "cc:c:warnings": {
@@ -133,17 +133,17 @@ const HELP_CATEGORIES = {
     body: [
       "<b>⚠️ Warnings System</b>",
       "──────────────────────",
-      "• <b>/warn</b> [reply | @user | ID] [reason] — Warn a user.",
-      "• <b>/dwarn</b> [reason] — Delete replied message and warn sender.",
-      "• <b>/swarn</b> [reason] — Warn silently without reply.",
-      "• <b>/warns</b> [reply | @user | ID] — Check user warnings.",
-      "• <b>/rmwarn</b> [reply | @user | ID] — Remove last warning.",
-      "• <b>/resetwarn</b> [reply | @user | ID] — Clear all user warnings.",
-      "• <b>/resetallwarns</b> — Clear warnings for everyone.",
+      "• <b>/warn</b> [reply | @user | ID] [reason] — <b>Warn a user.</b>",
+      "• <b>/dwarn</b> [reason] — <b>Delete replied message and warn sender.</b>",
+      "• <b>/swarn</b> [reason] — <b>Warn silently without reply.</b>",
+      "• <b>/warns</b> [reply | @user | ID] — <b>Check user warnings.</b>",
+      "• <b>/rmwarn</b> [reply | @user | ID] — <b>Remove last warning.</b>",
+      "• <b>/resetwarn</b> [reply | @user | ID] — <b>Clear all user warnings.</b>",
+      "• <b>/resetallwarns</b> — <b>Clear warnings for everyone.</b>",
       "• <b>/warnings</b> • <b>/warnlimit</b> &lt;n&gt; • <b>/warnmode</b> &lt;action&gt; • <b>/warntime</b> &lt;time|off&gt;",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/warn @user Be polite</code> • <code>/warnlimit 3</code>"
+      "<b>/warn @user Be polite</b> • <b>/warnlimit 3</b>"
     ].join("\n")
   },
   "cc:c:locks": {
@@ -151,14 +151,14 @@ const HELP_CATEGORIES = {
     body: [
       "<b>🔒 Locks &amp; Allowlist (52 Types)</b>",
       "──────────────────────",
-      "• <b>/lock</b> &lt;type(s)&gt; [### reason {action}] — Lock content or text types.",
-      "• <b>/unlock</b> &lt;type(s)&gt; — Unlock content or text types.",
-      "• <b>/lockall</b> • <b>/unlockall</b> — Lock or unlock entire chat for members.",
+      "• <b>/lock</b> &lt;type(s)&gt; [### reason {action}] — <b>Lock content or text types.</b>",
+      "• <b>/unlock</b> &lt;type(s)&gt; — <b>Unlock content or text types.</b>",
+      "• <b>/lockall</b> • <b>/unlockall</b> — <b>Lock or unlock entire chat for members.</b>",
       "• <b>/locks</b> [list] • <b>/locktypes</b> • <b>/lockwarns</b> &lt;on|off&gt;",
       "• <b>/allowlist</b> [item|emojipack:&lt;&gt;] • <b>/rmallowlist</b> • <b>/rmallowlistall</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/lock all</code> • <code>/lockall</code> • <code>/unlockall</code>"
+      "<b>/lock all</b> • <b>/lockall</b> • <b>/unlockall</b>"
     ].join("\n")
   },
   "cc:c:flood": {
@@ -166,16 +166,16 @@ const HELP_CATEGORIES = {
     body: [
       "<b>🌊 Antiflood &amp; Spam Guards</b>",
       "──────────────────────",
-      "• <b>/flood</b> — View current flood settings.",
-      "• <b>/setflood</b> &lt;number|off&gt; — Set consecutive message limit.",
-      "• <b>/setfloodtimer</b> &lt;count&gt; &lt;time|off&gt; — Set timed flood limit.",
-      "• <b>/floodmode</b> &lt;ban|mute|kick|tban|tmute&gt; [time] — Set flood action.",
-      "• <b>/clearflood</b> &lt;on|off&gt; • <b>/floodslow</b> &lt;seconds|off&gt; — Auto-slowmode on flood.",
-      "• <b>/dupguard</b> &lt;count|off&gt; [mute|ban|kick|warn] — Block repeated identical messages.",
-      "• <b>/quarantine</b> &lt;duration|off&gt; — Restrict new joiners temporarily.",
+      "• <b>/flood</b> — <b>View current flood settings.</b>",
+      "• <b>/setflood</b> &lt;number|off&gt; — <b>Set consecutive message limit.</b>",
+      "• <b>/setfloodtimer</b> &lt;count&gt; &lt;time|off&gt; — <b>Set timed flood limit.</b>",
+      "• <b>/floodmode</b> &lt;ban|mute|kick|tban|tmute&gt; [time] — <b>Set flood action.</b>",
+      "• <b>/clearflood</b> &lt;on|off&gt; • <b>/floodslow</b> &lt;seconds|off&gt; — <b>Auto-slowmode on flood.</b>",
+      "• <b>/dupguard</b> &lt;count|off&gt; [mute|ban|kick|warn] — <b>Block repeated identical messages.</b>",
+      "• <b>/quarantine</b> &lt;duration|off&gt; — <b>Restrict new joiners temporarily.</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/setflood 3</code> • <code>/dupguard 3 mute</code> • <code>/quarantine 5m</code>"
+      "<b>/setflood 3</b> • <b>/dupguard 3 mute</b> • <b>/quarantine 5m</b>"
     ].join("\n")
   },
   "cc:c:blocklist": {
@@ -183,14 +183,14 @@ const HELP_CATEGORIES = {
     body: [
       "<b>🚫 Blocklist Rules</b>",
       "──────────────────────",
-      "• <b>/addblocklist</b> &lt;word|\"phrase\"|wildcard&gt; [reason] — Add blocked term.",
-      "• <b>/rmblocklist</b> &lt;trigger&gt; — Remove blocked term.",
-      "• <b>/unblocklistall</b> — Clear all blocklists (creator only).",
+      "• <b>/addblocklist</b> &lt;word|\"phrase\"|wildcard&gt; [reason] — <b>Add blocked term.</b>",
+      "• <b>/rmblocklist</b> &lt;trigger&gt; — <b>Remove blocked term.</b>",
+      "• <b>/unblocklistall</b> — <b>Clear all blocklists (creator only).</b>",
       "• <b>/blocklist</b> • <b>/blocklistmode</b> • <b>/blocklistdelete</b>",
       "• <b>/setblocklistreason</b> &lt;text&gt; • <b>/resetblocklistreason</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/addblocklist spam No spam</code> • <code>/blocklistmode warn</code>"
+      "<b>/addblocklist spam No spam</b> • <b>/blocklistmode warn</b>"
     ].join("\n")
   },
   "cc:c:filters": {
@@ -198,13 +198,13 @@ const HELP_CATEGORIES = {
     body: [
       "<b>💬 Auto-Reply Filters</b>",
       "──────────────────────",
-      "• <b>/filter</b> &lt;trigger&gt; [reply] — Save auto-reply from text or replied item.",
-      "• Supports <code>exact:</code>, <code>prefix:</code>, <code>(a, b)</code>, <code>%%%</code> variants, fillings &amp; buttons.",
-      "• <b>/filters</b> — List active filters.",
-      "• <b>/stop</b> &lt;trigger&gt; — Delete a filter.",
+      "• <b>/filter</b> &lt;trigger&gt; [reply] — <b>Save auto-reply from text or replied item.</b>",
+      "• <b>Supports exact:, prefix:, (a, b), %%% variants, fillings &amp; buttons.</b>",
+      "• <b>/filters</b> — <b>List active filters.</b>",
+      "• <b>/stop</b> &lt;trigger&gt; — <b>Delete a filter.</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/filter hi Hey {first}!</code> • <code>/filter exact:rules Check /rules</code>"
+      "<b>/filter hi Hey {first}!</b> • <b>/filter exact:rules Check /rules</b>"
     ].join("\n")
   },
   "cc:c:notes": {
@@ -212,13 +212,13 @@ const HELP_CATEGORIES = {
     body: [
       "<b>📝 Saved Notes</b>",
       "──────────────────────",
-      "• <b>/save</b> &lt;name&gt; [content] — Save a note from text or replied item.",
-      "• <b>/get</b> &lt;name&gt; [noformat] or <b>#&lt;name&gt;</b> — Show saved note.",
-      "• <b>/notes</b> — List saved notes.",
-      "• <b>/clear</b> &lt;name&gt; — Delete a note.",
+      "• <b>/save</b> &lt;name&gt; [content] — <b>Save a note from text or replied item.</b>",
+      "• <b>/get</b> &lt;name&gt; [noformat] or <b>#&lt;name&gt;</b> — <b>Show saved note.</b>",
+      "• <b>/notes</b> — <b>List saved notes.</b>",
+      "• <b>/clear</b> &lt;name&gt; — <b>Delete a note.</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/save schedule Match starts at 7:30 PM</code> • <code>#schedule</code>"
+      "<b>/save schedule Match starts at 7:30 PM</b> • <b>#schedule</b>"
     ].join("\n")
   },
   "cc:c:greetings": {
@@ -226,13 +226,13 @@ const HELP_CATEGORIES = {
     body: [
       "<b>👋 Welcome &amp; Goodbye</b>",
       "──────────────────────",
-      "• <b>/setwelcome</b> [text | reply] — Set welcome message.",
+      "• <b>/setwelcome</b> [text | reply] — <b>Set welcome message.</b>",
       "• <b>/welcome</b> &lt;on|off|noformat&gt; • <b>/resetwelcome</b> • <b>/cleanwelcome</b> &lt;on|off&gt;",
-      "• <b>/setgoodbye</b> [text | reply] — Set goodbye message.",
+      "• <b>/setgoodbye</b> [text | reply] — <b>Set goodbye message.</b>",
       "• <b>/goodbye</b> &lt;on|off|noformat&gt; • <b>/resetgoodbye</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/setwelcome Welcome {first} to {chatname}!</code> • <code>/welcome on</code>"
+      "<b>/setwelcome Welcome {first} to {chatname}!</b> • <b>/welcome on</b>"
     ].join("\n")
   },
   "cc:c:pin": {
@@ -240,14 +240,14 @@ const HELP_CATEGORIES = {
     body: [
       "<b>📌 Pin &amp; Linked Channel</b>",
       "──────────────────────",
-      "• <b>/pinned</b> — Jump to pinned message.",
-      "• <b>/pin</b> [loud|notify] (reply) — Pin message.",
-      "• <b>/permapin</b> &lt;text&gt; — Send and pin message.",
+      "• <b>/pinned</b> — <b>Jump to pinned message.</b>",
+      "• <b>/pin</b> [loud|notify] (reply) — <b>Pin message.</b>",
+      "• <b>/permapin</b> &lt;text&gt; — <b>Send and pin message.</b>",
       "• <b>/unpin</b> [reply] • <b>/unpinall</b>",
       "• <b>/antichannelpin</b> &lt;on|off&gt; • <b>/cleanlinked</b> &lt;on|off&gt;",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/pin loud</code> • <code>/permapin Live Match Thread!</code>"
+      "<b>/pin loud</b> • <b>/permapin Live Match Thread!</b>"
     ].join("\n")
   },
   "cc:c:purges": {
@@ -255,15 +255,15 @@ const HELP_CATEGORIES = {
     body: [
       "<b>🧹 Purges &amp; Cleanup</b>",
       "──────────────────────",
-      "• <b>/purge</b> [X] (reply) — Delete messages from replied message.",
-      "• <b>/spurge</b> [X] (reply) — Purge silently.",
-      "• <b>/del</b> (reply) — Delete replied message.",
+      "• <b>/purge</b> [X] (reply) — <b>Delete messages from replied message.</b>",
+      "• <b>/spurge</b> [X] (reply) — <b>Purge silently.</b>",
+      "• <b>/del</b> (reply) — <b>Delete replied message.</b>",
       "• <b>/purgefrom</b> • <b>/purgeto</b>",
-      "• <b>/cleanservice</b> &lt;on|off&gt; — Auto-delete join/leave/pin service messages.",
+      "• <b>/cleanservice</b> &lt;on|off&gt; — <b>Auto-delete join/leave/pin service messages.</b>",
       "• <b>/cleancommand</b> &lt;all|admin|user|other&gt; • <b>/keepcommand</b> • <b>/cleancommandtypes</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/purge</code> • <code>/purge 10</code> • <code>/cleanservice on</code>"
+      "<b>/purge</b> • <b>/purge 10</b> • <b>/cleanservice on</b>"
     ].join("\n")
   },
   "cc:c:rules": {
@@ -271,13 +271,13 @@ const HELP_CATEGORIES = {
     body: [
       "<b>📜 Group Rules</b>",
       "──────────────────────",
-      "• <b>/rules</b> [noformat] — Show group rules.",
-      "• <b>/setrules</b> &lt;text&gt; — Set group rules.",
-      "• <b>/privaterules</b> &lt;on|off&gt; — Send rules via DM button.",
+      "• <b>/rules</b> [noformat] — <b>Show group rules.</b>",
+      "• <b>/setrules</b> &lt;text&gt; — <b>Set group rules.</b>",
+      "• <b>/privaterules</b> &lt;on|off&gt; — <b>Send rules via DM button.</b>",
       "• <b>/resetrules</b> • <b>/setrulesbutton</b> &lt;label&gt; • <b>/resetrulesbutton</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/setrules 1. No spam 2. Respect members</code> • <code>/rules</code>"
+      "<b>/setrules 1. No spam 2. Respect members</b> • <b>/rules</b>"
     ].join("\n")
   },
   "cc:c:raid_misc": {
@@ -285,18 +285,18 @@ const HELP_CATEGORIES = {
     body: [
       "<b>🛠️ Raid, Polls &amp; Tools</b>",
       "──────────────────────",
-      "• <b>/poll</b> &lt;Question&gt; | &lt;Opt1&gt; | &lt;Opt2&gt; — Create a poll.",
-      "• <b>/stoppoll</b> (reply to poll) — Stop an active poll.",
+      "• <b>/poll</b> &lt;Question&gt; | &lt;Opt1&gt; | &lt;Opt2&gt; — <b>Create a poll.</b>",
+      "• <b>/stoppoll</b> (reply to poll) — <b>Stop an active poll.</b>",
       "• <b>/raidmode</b> &lt;on|off|time&gt; • <b>/autoraid</b> &lt;n|off&gt; • <b>/raidactiontime</b> &lt;time&gt;",
       "• <b>/slowmode</b> &lt;time|off&gt; • <b>/nightmode</b> &lt;on|off&gt; • <b>/setnightmode</b> &lt;HH:MM&gt; &lt;HH:MM&gt;",
-      "• <b>/invite</b> — Get or generate group invite link.",
-      "• <b>/disable</b> &lt;cmd&gt; • <b>/enable</b> &lt;cmd&gt; • <b>/disabled</b> — Toggle user commands.",
-      "• <b>/resetconfig</b> — Reset chat settings to default (creator only).",
+      "• <b>/invite</b> — <b>Get or generate group invite link.</b>",
+      "• <b>/disable</b> &lt;cmd&gt; • <b>/enable</b> &lt;cmd&gt; • <b>/disabled</b> — <b>Toggle user commands.</b>",
+      "• <b>/resetconfig</b> — <b>Reset chat settings to default (creator only).</b>",
       "• <b>/report</b> [reason] or <b>@admin</b> • <b>/reports</b> &lt;on|off&gt;",
       "• <b>/id</b> • <b>/info</b> [reply | @user | ID] • <b>/chatinfo</b>",
       "",
       "<b>💡 Examples:</b>",
-      "<code>/poll Winner? | India | Australia</code> • <code>/invite</code> • <code>/disable id</code>"
+      "<b>/poll Winner? | India | Australia</b> • <b>/invite</b> • <b>/disable id</b>"
     ].join("\n")
   }
 };
@@ -513,6 +513,14 @@ async function saveChatConfig(chatId, cfg) {
   await storeSet(`cfg:${chatId}`, cfg);
 }
 
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function getUserDisplayLabel(userObj, fallbackId = "") {
   if (!userObj) return String(fallbackId || "User");
   if (userObj.username) return `@${userObj.username}`;
@@ -580,7 +588,7 @@ function isThankYouMessage(text) {
 
 async function sendAuditLog(token, logChatId, text) {
   if (!logChatId) return;
-  await safeSend(token, logChatId, `[${BOT_NAME} Log]\n${text}`);
+  await safeSend(token, logChatId, `<b>[${escapeHtml(BOT_NAME)} Log]</b>\n<b>${escapeHtml(text)}</b>`, undefined, undefined, false, "HTML");
 }
 
 function buildStartIntro(botUsername = "") {
@@ -590,15 +598,13 @@ function buildStartIntro(botUsername = "") {
 
   return {
     text: [
-      `<b>✨ ${BOT_NAME} — Moderation &amp; Community Suite</b>`,
-      "──────────────────────",
-      "Minimal, reliable group management with instant webhook execution and persistent storage.",
+      `<b>${escapeHtml(BOT_NAME)}</b>`,
+      "<b>Your all-in-one group assistant for live discussions and active communities.</b>",
       "",
-      "• <b>🛡️ Admin &amp; Ranks:</b> Promotions, custom titles, active admin leaderboard, approvals &amp; watchlist",
-      "• <b>⭐ Member Karma:</b> Automatic thank-you points, member ranks &amp; top helper leaderboard",
-      "• <b>🔨 Enforcement &amp; Tools:</b> Ban, mute, kick, warnings, 52 locks, antiflood, dup-guard, polls, filters &amp; notes",
+      "• <b>Instant controls for rules, locks, anti-spam &amp; member actions</b>",
+      "• <b>Built-in karma rewards, admin rankings, polls &amp; quick notes</b>",
       "",
-      "Tap <b>Help</b> below to explore all commands."
+      "<b>Select Help below to view all commands.</b>"
     ].join("\n"),
     replyMarkup: {
       inline_keyboard: [
@@ -909,7 +915,7 @@ async function processNewMemberJoin(token, chatId, cfg, member, chat) {
     cfg.raid.enabled = true;
     cfg.raid.untilTs = now + (cfg.raid.actionSeconds || 600) * 1000;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Auto-raid mode activated for ${cfg.raid.actionSeconds || 600}s.`);
+    await safeSend(token, chatId, `<b>Auto-raid mode activated for ${cfg.raid.actionSeconds || 600}s.</b>`);
   }
 
   if (isRaidActive(cfg.raid) && member?.id && !member.is_bot) {
@@ -998,10 +1004,10 @@ async function handleBotMembershipChange(mcm, token, logChatId) {
   if (!alertMsg) return;
 
   if (actor?.id) {
-    await safeSend(token, actor.id, alertMsg);
+    await safeSend(token, actor.id, `<b>${escapeHtml(alertMsg)}</b>`);
   }
   if (logChatId) {
-    await safeSend(token, logChatId, alertMsg);
+    await safeSend(token, logChatId, `<b>${escapeHtml(alertMsg)}</b>`);
   }
 }
 
@@ -1029,7 +1035,7 @@ async function handleJoinRequest(joinReq, token, logChatId) {
       await safeSend(
         token,
         logChatId,
-        `${BOT_NAME} auto-approve failed in "${title}" (${chatId}) for user ${userId}: ${err.message}`
+        `<b>${escapeHtml(`${BOT_NAME} auto-approve failed in "${title}" (${chatId}) for user ${userId}: ${err.message}`)}</b>`
       );
     }
   }
@@ -1054,7 +1060,7 @@ async function handleCallback(cq, token) {
   if (!chatId) return;
 
   if (data === "cc:help_menu") {
-    const menuText = `<b>📚 ${BOT_NAME} Help Menu</b>\n\nChoose a command category:`;
+    const menuText = `<b>📚 ${escapeHtml(BOT_NAME)} Help Menu</b>\n\n<b>Choose a command category:</b>`;
     if (messageId) {
       await safeTgApi(token, "editMessageText", {
         chat_id: chatId,
@@ -1405,7 +1411,7 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
     if (PUNISHMENT_ACTIONS.has(wCfg.mode)) {
       const msg = await applyPunishment(token, chatId, targetUser, wCfg.mode, wCfg.durationSeconds, reason, logChatId, actorUser);
       if (!silent) {
-        await safeSend(token, chatId, `${msg} (reached ${wCfg.limit}/${wCfg.limit} warnings).`, undefined, replyToMessageId);
+        await safeSend(token, chatId, `<b>${escapeHtml(`${msg} (reached ${wCfg.limit}/${wCfg.limit} warnings).`)}</b>`, undefined, replyToMessageId);
       }
       return;
     }
@@ -1413,7 +1419,7 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
 
   const text = `Warning (${warns.length}/${wCfg.limit || 3}) issued to ${label}.\nReason: ${reason || "Warning"}`;
   if (!silent) {
-    await safeSend(token, chatId, text, undefined, replyToMessageId);
+    await safeSend(token, chatId, `<b>${escapeHtml(text)}</b>`, undefined, replyToMessageId);
   }
   if (logChatId) {
     await sendAuditLog(token, logChatId, `Chat ${chatId}: ${text.replace(/\n/g, " | ")}`);
@@ -1429,9 +1435,9 @@ async function runEnforcementAction(token, chatId, sender, mode, durationSeconds
   if (!PUNISHMENT_ACTIONS.has(mode)) return;
   try {
     const resText = await applyPunishment(token, chatId, sender, mode, durationSeconds || 0, reason, logChatId, actorUser);
-    await safeSend(token, chatId, resText);
+    await safeSend(token, chatId, `<b>${escapeHtml(resText)}</b>`);
   } catch (err) {
-    await safeSend(token, chatId, `Action (${mode}) failed for ${sender?.first_name || sender?.id}: ${err.message}`);
+    await safeSend(token, chatId, `<b>${escapeHtml(`Action (${mode}) failed for ${sender?.first_name || sender?.id}: ${err.message}`)}</b>`);
   }
 }
 
@@ -1478,8 +1484,8 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
           token,
           chatId,
           targetCfg.rules.text
-            ? applyFillings(targetCfg.rules.text, sender, { title: "Group" })
-            : "No rules set for this chat."
+            ? `<b>${escapeHtml(applyFillings(targetCfg.rules.text, sender, { title: "Group" }))}</b>`
+            : "<b>No rules set for this chat.</b>"
         );
         return;
       }
@@ -1493,7 +1499,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       await safeSend(
         token,
         chatId,
-        `<b>📚 ${BOT_NAME} Help Menu</b>\n\nChoose a command category:`,
+        `<b>📚 ${escapeHtml(BOT_NAME)} Help Menu</b>\n\n<b>Choose a command category:</b>`,
         buildHelpMenuKeyboard(),
         undefined,
         false,
@@ -1507,7 +1513,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       await safeSend(
         token,
         chatId,
-        `Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}`
+        `<b>Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}</b>`
       );
       return;
     }
@@ -1606,7 +1612,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `Reported to admins${mentions.length ? `: ${mentions.slice(0, 8).join(" ")}` : "."}`,
+      `<b>${escapeHtml(`Reported to admins${mentions.length ? `: ${mentions.slice(0, 8).join(" ")}` : "."}`)}</b>`,
       undefined,
       message.reply_to_message?.message_id || message.message_id
     );
@@ -1693,7 +1699,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
         await safeSend(
           token,
           chatId,
-          `Locked (${lType}) triggered for ${sender.first_name}, but could not delete message (check bot delete permission).`
+          `<b>${escapeHtml(`Locked (${lType}) triggered for ${sender.first_name}, but could not delete message (check bot delete permission).`)}</b>`
         );
       }
       const lConf = cfg.lockConfig[lType];
@@ -1831,7 +1837,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       await safeSend(
         token,
         chatId,
-        `⭐ +1 Karma awarded to ${curRec.name} (Total: ${curRec.points} pts • ${rankBadge})`,
+        `<b>⭐ +1 Karma awarded to ${escapeHtml(curRec.name)} (Total: ${curRec.points} pts • ${escapeHtml(rankBadge)})</b>`,
         undefined,
         message.message_id
       );
@@ -1847,8 +1853,8 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
         token,
         chatId,
         targetCfg.rules.text
-          ? applyFillings(targetCfg.rules.text, sender, { title: "Group" })
-          : "No rules set for this chat."
+          ? `<b>${escapeHtml(applyFillings(targetCfg.rules.text, sender, { title: "Group" }))}</b>`
+          : "<b>No rules set for this chat.</b>"
       );
       return;
     }
@@ -1862,7 +1868,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `<b>📚 ${BOT_NAME} Help Menu</b>\n\nChoose a command category:`,
+      `<b>📚 ${escapeHtml(BOT_NAME)} Help Menu</b>\n\n<b>Choose a command category:</b>`,
       buildHelpMenuKeyboard(),
       undefined,
       false,
@@ -1876,7 +1882,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     const uid = target.id || senderId;
     const uObj = target.user || sender;
     if (!uid) {
-      await safeSend(token, chatId, "Reply to user or mention Telegram unique ID.", undefined, message.message_id);
+      await safeSend(token, chatId, "<b>Reply to user or mention Telegram unique ID.</b>", undefined, message.message_id);
       return;
     }
     const rec = cfg.karma?.[String(uid)] || { name: getUserDisplayLabel(uObj, uid), points: 0 };
@@ -1885,7 +1891,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `⭐ Karma Profile\nUser: ${rec.name || getUserDisplayLabel(uObj, uid)}\nPoints: ${pts}\nRank: ${badge}`,
+      `<b>⭐ Karma Profile\nUser: ${escapeHtml(rec.name || getUserDisplayLabel(uObj, uid))}\nPoints: ${pts}\nRank: ${escapeHtml(badge)}</b>`,
       undefined,
       message.message_id
     );
@@ -1904,17 +1910,17 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       .slice(0, 10);
 
     if (!entries.length) {
-      await safeSend(token, chatId, "No karma points recorded yet. Reply 'thanks' to helpful members!", undefined, message.message_id);
+      await safeSend(token, chatId, "<b>No karma points recorded yet. Reply 'thanks' to helpful members!</b>", undefined, message.message_id);
       return;
     }
 
     const lines = entries.map(
-      (e, idx) => `${idx + 1}. ${e.name} — ${e.points} pts (${getKarmaRankBadge(e.points)})`
+      (e, idx) => `<b>${idx + 1}. ${escapeHtml(e.name)} — ${e.points} pts (${escapeHtml(getKarmaRankBadge(e.points))})</b>`
     );
     await safeSend(
       token,
       chatId,
-      `🏆 Top Helpful Members\n──────────────────────\n${lines.join("\n")}`,
+      `<b>🏆 Top Helpful Members\n──────────────────────</b>\n${lines.join("\n")}`,
       undefined,
       message.message_id
     );
@@ -1952,18 +1958,18 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       .sort((a, b) => b.score - a.score);
 
     if (!ranked.length) {
-      await safeSend(token, chatId, "No human admins found to rank.", undefined, message.message_id);
+      await safeSend(token, chatId, "<b>No human admins found to rank.</b>", undefined, message.message_id);
       return;
     }
 
     const lines = ranked.map(
       (r, idx) =>
-        `${idx + 1}. ${r.name} [${r.badge}]\n   Score: ${r.score} pts (${r.msgs} msgs • ${r.actions} actions)`
+        `<b>${idx + 1}. ${escapeHtml(r.name)} [${escapeHtml(r.badge)}]\n   Score: ${r.score} pts (${r.msgs} msgs • ${r.actions} actions)</b>`
     );
     await safeSend(
       token,
       chatId,
-      `🛡️ Admin Activity Rankings\n──────────────────────\n${lines.join("\n")}`,
+      `<b>🛡️ Admin Activity Rankings\n──────────────────────</b>\n${lines.join("\n")}`,
       undefined,
       message.message_id
     );
@@ -1975,7 +1981,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}`,
+      `<b>Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}</b>`,
       undefined,
       message.message_id
     );
@@ -1990,7 +1996,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `User Info:\nName: ${u?.first_name || "N/A"}${u?.last_name ? ` ${u.last_name}` : ""}\nUsername: ${u?.username ? `@${u.username}` : "None"}\nID: ${u?.id ?? "N/A"}\nKarma: ${kPts} pts (${getKarmaRankBadge(kPts)})${watchNote ? `\nWatchlist: ${watchNote}` : ""}`,
+      `<b>User Info:\nName: ${escapeHtml(u?.first_name || "N/A")}${u?.last_name ? ` ${escapeHtml(u.last_name)}` : ""}\nUsername: ${u?.username ? escapeHtml(`@${u.username}`) : "None"}\nID: ${u?.id ?? "N/A"}\nKarma: ${kPts} pts (${escapeHtml(getKarmaRankBadge(kPts))})${watchNote ? `\nWatchlist: ${escapeHtml(watchNote)}` : ""}</b>`,
       undefined,
       message.message_id
     );
@@ -2002,7 +2008,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `Chat Info:\nTitle: ${message.chat.title || "Group"}\nID: ${chatId}\nType: ${message.chat.type}\nMembers: ${countRes?.result ?? "N/A"}`,
+      `<b>Chat Info:\nTitle: ${escapeHtml(message.chat.title || "Group")}\nID: ${chatId}\nType: ${escapeHtml(message.chat.type)}\nMembers: ${countRes?.result ?? "N/A"}</b>`,
       undefined,
       message.message_id
     );
@@ -2011,11 +2017,11 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
 
   if (cmd === "/report") {
     if (!cfg.reportsEnabled) {
-      await safeSend(token, chatId, "Reports are disabled in this chat.", undefined, message.message_id);
+      await safeSend(token, chatId, "<b>Reports are disabled in this chat.</b>", undefined, message.message_id);
       return;
     }
     if (!message.reply_to_message) {
-      await safeSend(token, chatId, "Reply to user or mention Telegram unique ID.", undefined, message.message_id);
+      await safeSend(token, chatId, "<b>Reply to user or mention Telegram unique ID.</b>", undefined, message.message_id);
       return;
     }
     const admins = await getChatAdminsCached(token, chatId);
@@ -2023,7 +2029,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `Report sent to admins${mentions.length ? `: ${mentions.slice(0, 8).join(" ")}` : "."}${cmdArgsStr ? `\nReason: ${cmdArgsStr}` : ""}`,
+      `<b>${escapeHtml(`Report sent to admins${mentions.length ? `: ${mentions.slice(0, 8).join(" ")}` : "."}${cmdArgsStr ? `\nReason: ${cmdArgsStr}` : ""}`)}</b>`,
       undefined,
       message.message_id
     );
@@ -2042,12 +2048,12 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
   if (cmd === "/get") {
     const noteName = (cmdArgs[0] || "").toLowerCase();
     if (!noteName) {
-      await safeSend(token, chatId, "Usage: /get <note_name>", undefined, message.message_id);
+      await safeSend(token, chatId, "<b>Usage: /get &lt;note_name&gt;</b>", undefined, message.message_id);
       return;
     }
     const notes = (await storeGet(`notes:${chatId}`)) || {};
     if (!notes[noteName]) {
-      await safeSend(token, chatId, "Note not found.", undefined, message.message_id);
+      await safeSend(token, chatId, "<b>Note not found.</b>", undefined, message.message_id);
       return;
     }
     await sendEntryResponse(
@@ -2068,7 +2074,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      keys.length ? `Saved notes:\n${keys.map((k) => `#${k}`).join(", ")}` : "No saved notes.",
+      keys.length ? `<b>Saved notes:\n${escapeHtml(keys.map((k) => `#${k}`).join(", "))}</b>` : "<b>No saved notes.</b>",
       undefined,
       message.message_id
     );
@@ -2082,9 +2088,9 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       const title = a.custom_title ? ` (${a.custom_title})` : "";
       const st = cfg.modStats?.[String(a.user.id)];
       const badge = !a.user.is_bot ? ` • ${getAdminRankBadge(computeAdminScore(st))}` : "";
-      return `- ${a.user.first_name}${a.user.username ? ` (@${a.user.username})` : ""}${role}${title}${badge}`;
+      return `<b>- ${escapeHtml(a.user.first_name)}${a.user.username ? ` (${escapeHtml(`@${a.user.username}`)})` : ""}${escapeHtml(role)}${escapeHtml(title)}${escapeHtml(badge)}</b>`;
     });
-    await safeSend(token, chatId, lines.length ? `Admins:\n${lines.join("\n")}` : "No admins found.", undefined, message.message_id);
+    await safeSend(token, chatId, lines.length ? `<b>Admins:</b>\n${lines.join("\n")}` : "<b>No admins found.</b>", undefined, message.message_id);
     return;
   }
 
@@ -2092,7 +2098,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     const target = await resolveTargetUser(token, message, parts);
     const checkUser = target.id ? target : { id: senderId, label: sender?.username ? `@${sender.username}` : String(senderId) };
     const isApp = checkUser.id && cfg.approvedUsers.includes(checkUser.id);
-    await safeSend(token, chatId, `${checkUser.label} is ${isApp ? "approved" : "not approved"}.`, undefined, message.message_id);
+    await safeSend(token, chatId, `<b>${escapeHtml(`${checkUser.label} is ${isApp ? "approved" : "not approved"}.`)}</b>`, undefined, message.message_id);
     return;
   }
 
@@ -2100,7 +2106,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `Flood settings:\nLimit: ${cfg.flood.limit || "off"}\nTimer: ${cfg.flood.timerCount ? `${cfg.flood.timerCount} msgs / ${cfg.flood.timerSeconds}s` : "off"}\nAction: ${cfg.flood.action}\nClear flood: ${cfg.flood.clearFlood ? "on" : "off"}\nAuto-slow: ${cfg.flood.autoSlowSeconds ? `${cfg.flood.autoSlowSeconds}s` : "off"}`,
+      `<b>Flood settings:\nLimit: ${cfg.flood.limit || "off"}\nTimer: ${cfg.flood.timerCount ? `${cfg.flood.timerCount} msgs / ${cfg.flood.timerSeconds}s` : "off"}\nAction: ${cfg.flood.action}\nClear flood: ${cfg.flood.clearFlood ? "on" : "off"}\nAuto-slow: ${cfg.flood.autoSlowSeconds ? `${cfg.flood.autoSlowSeconds}s` : "off"}</b>`,
       undefined,
       message.message_id
     );
@@ -2114,7 +2120,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `Blocklist (mode: ${cfg.blocklistMode}, delete: ${cfg.blocklistDelete ? "on" : "off"}):\n${listStr}`,
+      `<b>${escapeHtml(`Blocklist (mode: ${cfg.blocklistMode}, delete: ${cfg.blocklistDelete ? "on" : "off"}):\n${listStr}`)}</b>`,
       undefined,
       message.message_id
     );
@@ -2122,21 +2128,21 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
   }
 
   if (cmd === "/cleancommandtypes") {
-    await safeSend(token, chatId, "Cleanable command types: all, admin, user, other", undefined, message.message_id);
+    await safeSend(token, chatId, "<b>Cleanable command types: all, admin, user, other</b>", undefined, message.message_id);
     return;
   }
 
   if (cmd === "/locktypes") {
-    await safeSend(token, chatId, `Lock types (${LOCK_TYPES.length}):\n${LOCK_TYPES.join(", ")}`, undefined, message.message_id);
+    await safeSend(token, chatId, `<b>Lock types (${LOCK_TYPES.length}):\n${escapeHtml(LOCK_TYPES.join(", "))}</b>`, undefined, message.message_id);
     return;
   }
 
   if (cmd === "/locks") {
     const locked = Object.keys(cfg.locks).filter((k) => cfg.locks[k]);
     if (cmdArgs[0]?.toLowerCase() === "list") {
-      await safeSend(token, chatId, `Locked: ${locked.join(", ") || "none"}\nAll: ${LOCK_TYPES.join(", ")}`, undefined, message.message_id);
+      await safeSend(token, chatId, `<b>Locked: ${escapeHtml(locked.join(", ") || "none")}\nAll: ${escapeHtml(LOCK_TYPES.join(", "))}</b>`, undefined, message.message_id);
     } else {
-      await safeSend(token, chatId, `Currently locked:\n${locked.join(", ") || "none"}`, undefined, message.message_id);
+      await safeSend(token, chatId, `<b>Currently locked:\n${escapeHtml(locked.join(", ") || "none")}</b>`, undefined, message.message_id);
     }
     return;
   }
@@ -2146,7 +2152,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      filters.length ? `Active filters:\n${filters.map((f) => `- ${f.trigger}`).join("\n")}` : "No filters configured.",
+      filters.length ? `<b>Active filters:\n${escapeHtml(filters.map((f) => `- ${f.trigger}`).join("\n"))}</b>` : "<b>No filters configured.</b>",
       undefined,
       message.message_id
     );
@@ -2158,23 +2164,23 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       const chatRes = await tgApi(token, "getChat", { chat_id: chatId });
       const pId = chatRes?.result?.pinned_message?.message_id;
       if (!pId) {
-        await safeSend(token, chatId, "No pinned message found.", undefined, message.message_id);
+        await safeSend(token, chatId, "<b>No pinned message found.</b>", undefined, message.message_id);
         return;
       }
-      await safeSend(token, chatId, "Current pinned message.", undefined, pId);
+      await safeSend(token, chatId, "<b>Current pinned message.</b>", undefined, pId);
     } catch (err) {
-      await safeSend(token, chatId, `Failed to get pinned message: ${err.message}`, undefined, message.message_id);
+      await safeSend(token, chatId, `<b>${escapeHtml(`Failed to get pinned message: ${err.message}`)}</b>`, undefined, message.message_id);
     }
     return;
   }
 
   if (cmd === "/rules") {
     if (!cfg.rules.text) {
-      await safeSend(token, chatId, "No rules have been set for this chat.", undefined, message.message_id);
+      await safeSend(token, chatId, "<b>No rules have been set for this chat.</b>", undefined, message.message_id);
       return;
     }
     if (cmdArgs[0]?.toLowerCase() === "noformat") {
-      await safeSend(token, chatId, cfg.rules.text, undefined, message.message_id);
+      await safeSend(token, chatId, `<b>${escapeHtml(cfg.rules.text)}</b>`, undefined, message.message_id);
       return;
     }
     if (cfg.rules.privateRules && senderId) {
@@ -2184,7 +2190,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
         await safeSend(
           token,
           chatId,
-          "Click below to view the rules in private.",
+          "<b>Click below to view the rules in private.</b>",
           { inline_keyboard: [[{ text: cfg.rules.buttonText || "Rules", url: `https://t.me/${botUname}?start=rules_${chatId}` }]] },
           message.message_id
         );
@@ -2193,7 +2199,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     }
     const filled = applyFillings(cfg.rules.text, sender, message.chat, { rulesButton: cfg.rules.buttonText });
     const { text, replyMarkup } = extractButtonsFromText(filled);
-    await safeSend(token, chatId, text, replyMarkup, message.message_id);
+    await safeSend(token, chatId, `<b>${escapeHtml(text)}</b>`, replyMarkup, message.message_id);
     return;
   }
 
@@ -2201,7 +2207,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `Warning settings:\nLimit: ${cfg.warnings.limit}\nMode: ${cfg.warnings.mode}\nExpire time: ${cfg.warnings.timeSeconds ? `${cfg.warnings.timeSeconds}s` : "off"}`,
+      `<b>Warning settings:\nLimit: ${cfg.warnings.limit}\nMode: ${cfg.warnings.mode}\nExpire time: ${cfg.warnings.timeSeconds ? `${cfg.warnings.timeSeconds}s` : "off"}</b>`,
       undefined,
       message.message_id
     );
@@ -2212,14 +2218,14 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     if (!senderId) return;
     const right = await checkBotPermission(token, chatId, "can_restrict_members");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message, undefined, message.message_id);
+      await safeSend(token, chatId, `<b>${escapeHtml(right.message)}</b>`, undefined, message.message_id);
       return;
     }
     try {
       const resText = await applyPunishment(token, chatId, sender, "kick", 0, "Used /kickme", logChatId);
-      await safeSend(token, chatId, resText, undefined, message.message_id);
+      await safeSend(token, chatId, `<b>${escapeHtml(resText)}</b>`, undefined, message.message_id);
     } catch (err) {
-      await safeSend(token, chatId, `Kick failed: ${err.message}`, undefined, message.message_id);
+      await safeSend(token, chatId, `<b>${escapeHtml(`Kick failed: ${err.message}`)}</b>`, undefined, message.message_id);
     }
     return;
   }
@@ -2253,7 +2259,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
   if (adminCommands.has(cmd)) {
     if (!senderId || !senderIsAdmin) {
       if (cfg.adminError) {
-        await safeSend(token, chatId, "Only group administrators can use this command.", undefined, message.message_id);
+        await safeSend(token, chatId, "<b>Only group administrators can use this command.</b>", undefined, message.message_id);
       }
       return;
     }
@@ -2287,7 +2293,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   const adminMsgId = message.message_id;
 
   const replyAdmin = (text, replyMarkup) =>
-    safeSend(token, chatId, text, replyMarkup, adminMsgId);
+    safeSend(token, chatId, `<b>${escapeHtml(text)}</b>`, replyMarkup, adminMsgId);
 
   if (cmd === "/karmaenable") {
     const flag = parseBoolFlag(cmdArgs[0]);
@@ -3326,7 +3332,8 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     try {
       const sent = await tgApi(token, "sendMessage", {
         chat_id: chatId,
-        text,
+        text: `<b>${escapeHtml(text)}</b>`,
+        parse_mode: "HTML",
         reply_markup: replyMarkup,
       });
       if (sent?.result?.message_id) {
@@ -3468,7 +3475,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     if (ids.length) await safeTgApi(token, "deleteMessages", { chat_id: chatId, message_ids: ids });
     await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
     if (cmd === "/purge") {
-      await safeSend(token, chatId, `Purged ${ids.length} messages.`);
+      await safeSend(token, chatId, `<b>${escapeHtml(`Purged ${ids.length} messages.`)}</b>`);
     }
     return;
   }
@@ -3858,7 +3865,7 @@ async function isChatAdmin(token, chatId, userId, senderChat = null, cfg = null)
   }
 }
 
-async function safeSend(token, chatId, text, replyMarkup, replyToMessageId, protectContent = false, parseMode = undefined) {
+async function safeSend(token, chatId, text, replyMarkup, replyToMessageId, protectContent = false, parseMode = "HTML") {
   try {
     const payload = { chat_id: chatId, text };
     if (parseMode) payload.parse_mode = parseMode;
@@ -3891,3 +3898,4 @@ async function tgApi(token, method, body) {
   }
   return data;
 }
+
