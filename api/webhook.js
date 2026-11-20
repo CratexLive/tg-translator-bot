@@ -557,7 +557,7 @@ function buildStartIntro(botUsername = "") {
       "",
       "• <b>Admin &amp; Access:</b> Promotions, custom ranks, admin cache, anonymous admin bypass &amp; user approvals",
       "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 content locks, allowlists, antiflood &amp; wildcard blocklists",
-      "• <b>Smart Automation:</b> Media/text greetings, pin tools, purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
+      "• <b>Smart Automation:</b> Media/text greetings, pin tools, bulk purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
       "",
       "Select <b>Help</b> below to inspect every command category."
     ].join("\n"),
