@@ -32,318 +32,243 @@ const HELP_CATEGORIES = {
   "cc:c:admin": {
     title: "Admin",
     body: [
-      "<b>Admin Management</b>",
+      "<b>🛡️ Admin Management</b>",
+      "──────────────────────",
+      "• <b>/promote</b> [reply | @user | ID] — Promote a member to admin.",
+      "• <b>/demote</b> [reply | @user | ID] — Demote an admin to member.",
+      "• <b>/title</b> [reply | @user | ID] &lt;title&gt; — Set admin badge (max 16 chars).",
+      "• <b>/adminlist</b> — Show all group admins and titles.",
+      "• <b>/admincache</b> — Refresh cached admin list.",
+      "• <b>/anonadmin</b> &lt;on|off&gt; — Bypass checks for anonymous admins.",
+      "• <b>/adminerror</b> &lt;on|off&gt; — Show or hide non-admin notices.",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /promote [@user|id|reply] — Promote a member to group administrator.",
-      "• /demote [@user|id|reply] — Demote an administrator to regular member.",
-      "• /title [@user|id|reply] &lt;title&gt; — Set custom admin title (up to 16 characters).",
-      "• /adminlist — Display all chat administrators and custom titles.",
-      "• /admincache — Refresh cached administrator list.",
-      "• /anonadmin &lt;yes/no/on/off&gt; — Allow anonymous admins to bypass restrictions.",
-      "• /adminerror &lt;yes/no/on/off&gt; — Enable or disable non-admin warning replies.",
-      "",
-      "<b>Examples:</b>",
-      "• /promote @member",
-      "• /title @member Moderator",
-      "• /anonadmin on"
+      "<b>💡 Examples:</b>",
+      "<code>/promote @player10</code> • <code>/title @player10 Mod</code>"
     ].join("\n")
   },
   "cc:c:approval": {
     title: "Approval",
     body: [
-      "<b>User Approvals</b>",
+      "<b>✅ User Approvals</b>",
+      "──────────────────────",
+      "• <b>/approval</b> [reply | @user | ID] — Check approval status.",
+      "• <b>/approve</b> [reply | @user | ID] — Skip locks, flood &amp; blocklists.",
+      "• <b>/unapprove</b> [reply | @user | ID] — Remove user approval.",
+      "• <b>/approved</b> — Show all approved user IDs.",
+      "• <b>/unapproveall</b> — Clear all approved users.",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /approval [@user|id|reply] — Check approval status of a user.",
-      "• /approve [@user|id|reply] — Exempt user from locks, blocklists, and antiflood.",
-      "• /unapprove [@user|id|reply] — Remove approval exemption from a user.",
-      "• /approved — List all approved user IDs in the group.",
-      "• /unapproveall — Clear approval status for all users.",
-      "",
-      "<b>Examples:</b>",
-      "• /approve @trusted_member",
-      "• /approval @trusted_member",
-      "• /unapproveall"
+      "<b>💡 Examples:</b>",
+      "<code>/approve @trusted_user</code> • <code>/approved</code>"
     ].join("\n")
   },
   "cc:c:bans": {
     title: "Bans",
     body: [
-      "<b>Ban Commands</b>",
+      "<b>🔨 Ban Controls</b>",
+      "──────────────────────",
+      "• <b>/ban</b> [reply | @user | ID] [reason] — Ban a user permanently.",
+      "• <b>/dban</b> [reason] — Delete replied message and ban sender.",
+      "• <b>/sban</b> [reason] — Ban silently without reply.",
+      "• <b>/tban</b> [reply | @user | ID] &lt;time&gt; [reason] — Temp ban (s/m/h/d/w).",
+      "• <b>/unban</b> [reply | @user | ID] — Unban a user.",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /ban [@user|id|reply] [reason] — Permanently ban a user.",
-      "• /dban [reason] — Delete replied message and ban its sender.",
-      "• /sban [reason] — Silently ban user (removes command/replied message).",
-      "• /tban [@user|id|reply] &lt;time&gt; [reason] — Temporarily ban (s/m/h/d/w).",
-      "• /unban [@user|id|reply] — Unban or lift restrictions on a user.",
-      "",
-      "<b>Examples:</b>",
-      "• /ban @spammer Unauthorized links",
-      "• /dban Spam post",
-      "• /tban @user 2d Temporary ban"
+      "<b>💡 Examples:</b>",
+      "<code>/ban @spammer Spam links</code> • <code>/tban @user 2d</code>"
     ].join("\n")
   },
   "cc:c:mutes": {
     title: "Mutes",
     body: [
-      "<b>Mute Commands</b>",
+      "<b>🔇 Mute Controls</b>",
+      "──────────────────────",
+      "• <b>/mute</b> [reply | @user | ID] [reason] — Mute a user.",
+      "• <b>/dmute</b> [reason] — Delete replied message and mute sender.",
+      "• <b>/smute</b> [reason] — Mute silently without reply.",
+      "• <b>/tmute</b> [reply | @user | ID] &lt;time&gt; [reason] — Temp mute (s/m/h/d/w).",
+      "• <b>/unmute</b> [reply | @user | ID] — Unmute a user.",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /mute [@user|id|reply] [reason] — Restrict user from sending messages.",
-      "• /dmute [reason] — Delete replied message and mute sender.",
-      "• /smute [reason] — Silently mute user.",
-      "• /tmute [@user|id|reply] &lt;time&gt; [reason] — Temporarily mute user.",
-      "• /unmute [@user|id|reply] — Restore user messaging permissions.",
-      "",
-      "<b>Examples:</b>",
-      "• /mute @user Chat flood",
-      "• /tmute @user 30m Cooldown",
-      "• /dmute Off-topic message"
+      "<b>💡 Examples:</b>",
+      "<code>/mute @user Flood</code> • <code>/tmute @user 30m</code>"
     ].join("\n")
   },
   "cc:c:kicks": {
     title: "Kicks",
     body: [
-      "<b>Kick Commands</b>",
+      "<b>👢 Kick Controls</b>",
+      "──────────────────────",
+      "• <b>/kick</b> [reply | @user | ID] [reason] — Kick user from group.",
+      "• <b>/dkick</b> [reason] — Delete replied message and kick sender.",
+      "• <b>/skick</b> [reason] — Kick silently without reply.",
+      "• <b>/kickme</b> — Leave the group yourself.",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /kick [@user|id|reply] [reason] — Remove user from group (rejoin allowed).",
-      "• /dkick [reason] — Delete replied message and kick sender.",
-      "• /skick [reason] — Silently kick user.",
-      "• /kickme — Remove yourself from the group.",
-      "",
-      "<b>Examples:</b>",
-      "• /kick @user Rule break",
-      "• /dkick Duplicate message",
-      "• /kickme"
+      "<b>💡 Examples:</b>",
+      "<code>/kick @user Rule violation</code> • <code>/dkick</code>"
     ].join("\n")
   },
   "cc:c:warnings": {
     title: "Warnings",
     body: [
-      "<b>Warnings System</b>",
+      "<b>⚠️ Warnings System</b>",
+      "──────────────────────",
+      "• <b>/warn</b> [reply | @user | ID] [reason] — Warn a user.",
+      "• <b>/dwarn</b> [reason] — Delete replied message and warn sender.",
+      "• <b>/swarn</b> [reason] — Warn silently without reply.",
+      "• <b>/warns</b> [reply | @user | ID] — Check user warnings.",
+      "• <b>/rmwarn</b> [reply | @user | ID] — Remove last warning.",
+      "• <b>/resetwarn</b> [reply | @user | ID] — Clear all user warnings.",
+      "• <b>/resetallwarns</b> — Clear warnings for everyone.",
+      "• <b>/warnings</b> • <b>/warnlimit</b> &lt;n&gt; • <b>/warnmode</b> &lt;action&gt; • <b>/warntime</b> &lt;time|off&gt;",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /warn [@user|id|reply] [reason] — Warn a user.",
-      "• /dwarn [reason] — Delete replied message and warn sender.",
-      "• /swarn [reason] — Silently warn user.",
-      "• /warns [@user|id|reply] — View warnings for a user.",
-      "• /rmwarn [@user|id|reply] — Remove latest warning from user.",
-      "• /resetwarn [@user|id|reply] — Reset all warnings for a user.",
-      "• /resetallwarns — Reset all warnings in the group.",
-      "• /warnings — Show warning limit, punishment mode, and expiry.",
-      "• /warnmode &lt;ban/mute/kick/tban/tmute&gt; [time] — Set punishment action.",
-      "• /warnlimit &lt;number&gt; — Set warning threshold.",
-      "• /warntime &lt;time|off&gt; — Set warning expiration duration.",
-      "",
-      "<b>Examples:</b>",
-      "• /warn @user Follow group guidelines",
-      "• /warnlimit 3",
-      "• /warnmode kick",
-      "• /warntime 7d"
+      "<b>💡 Examples:</b>",
+      "<code>/warn @user Be polite</code> • <code>/warnlimit 3</code>"
     ].join("\n")
   },
   "cc:c:locks": {
     title: "Locks & Allowlist",
     body: [
-      "<b>Content Locks &amp; Allowlist (51 Types)</b>",
+      "<b>🔒 Locks &amp; Allowlist (52 Types)</b>",
+      "──────────────────────",
+      "• <b>/lock</b> &lt;type(s)&gt; [### reason {action}] — Lock media or text types.",
+      "• <b>/unlock</b> &lt;type(s)&gt; — Unlock media or text types.",
+      "• <b>/locks</b> [list] — View active locks.",
+      "• <b>/locktypes</b> — Show all supported lock types.",
+      "• <b>/lockwarns</b> &lt;on|off&gt; — Warn when locked content is sent.",
+      "• <b>/allowlist</b> [item|emojipack:&lt;&gt;] • <b>/rmallowlist</b> • <b>/rmallowlistall</b>",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /lock &lt;type(s)&gt; [### reason {action}] — Lock types or apply custom rule.",
-      "• /unlock &lt;type(s)&gt; — Unlock specified content types.",
-      "• /locks [list] — View active locks or full lock summary.",
-      "• /locktypes — View all 51 supported lock types.",
-      "• /lockwarns &lt;yes/no/on/off&gt; — Warn on locked content.",
-      "• /allowlist [item|emojipack:&lt;&gt;] — Add or view allowlisted items.",
-      "• /rmallowlist &lt;item&gt; — Remove item from allowlist.",
-      "• /rmallowlistall — Clear allowlist.",
-      "",
-      "<b>Examples:</b>",
-      "• /lock sticker photo gif video",
-      "• /lock url ### No external links {mute}",
-      "• /allowlist @CricxCrate"
+      "<b>💡 Examples:</b>",
+      "<code>/lock audio voice sticker</code> • <code>/lock url ### No links {mute}</code>"
     ].join("\n")
   },
   "cc:c:flood": {
     title: "Antiflood",
     body: [
-      "<b>Antiflood Protection</b>",
+      "<b>🌊 Antiflood Protection</b>",
+      "──────────────────────",
+      "• <b>/flood</b> — View current flood settings.",
+      "• <b>/setflood</b> &lt;number|off&gt; — Set consecutive message limit.",
+      "• <b>/setfloodtimer</b> &lt;count&gt; &lt;time|off&gt; — Set timed flood limit.",
+      "• <b>/floodmode</b> &lt;ban|mute|kick|tban|tmute&gt; [time] — Set flood action.",
+      "• <b>/clearflood</b> &lt;on|off&gt; — Delete flood messages.",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /flood — Display current flood settings.",
-      "• /setflood &lt;number/off&gt; — Trigger at N consecutive messages.",
-      "• /setfloodtimer &lt;count&gt; &lt;time|off&gt; — Trigger on N messages in time window.",
-      "• /floodmode &lt;ban/mute/kick/tban/tmute&gt; [time] — Set flood punishment.",
-      "• /clearflood &lt;yes/no/on/off&gt; — Delete flooding messages.",
-      "",
-      "<b>Examples:</b>",
-      "• /setflood 3",
-      "• /setfloodtimer 6 10s",
-      "• /floodmode kick",
-      "• /clearflood on"
+      "<b>💡 Examples:</b>",
+      "<code>/setflood 3</code> • <code>/floodmode kick</code> • <code>/clearflood on</code>"
     ].join("\n")
   },
   "cc:c:blocklist": {
     title: "Blocklists",
     body: [
-      "<b>Keyword &amp; Wildcard Blocklists</b>",
+      "<b>🚫 Blocklist Rules</b>",
+      "──────────────────────",
+      "• <b>/addblocklist</b> &lt;word|\"phrase\"|wildcard&gt; [reason] — Add blocked term.",
+      "• <b>/rmblocklist</b> &lt;trigger&gt; — Remove blocked term.",
+      "• <b>/unblocklistall</b> — Clear all blocklists (creator only).",
+      "• <b>/blocklist</b> • <b>/blocklistmode</b> • <b>/blocklistdelete</b>",
+      "• <b>/setblocklistreason</b> &lt;text&gt; • <b>/resetblocklistreason</b>",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /addblocklist &lt;trigger&gt; [reason] — Add word, \"phrase\", or * / ? / ** wildcard.",
-      "• /rmblocklist &lt;trigger&gt; — Remove a blocklist trigger.",
-      "• /unblocklistall — Clear all blocklists (creator only).",
-      "• /blocklist — View blocklist triggers and configuration.",
-      "• /blocklistmode &lt;nothing/ban/mute/kick/warn/tban/tmute&gt; — Set action.",
-      "• /blocklistdelete &lt;yes/no/on/off&gt; — Toggle message deletion.",
-      "• /setblocklistreason &lt;text&gt; — Set default blocklist reason.",
-      "• /resetblocklistreason — Clear default blocklist reason.",
-      "",
-      "<b>Examples:</b>",
-      "• /addblocklist spam No spam",
-      "• /addblocklist \"free giveaway\" Promotional spam",
-      "• /blocklistmode warn"
+      "<b>💡 Examples:</b>",
+      "<code>/addblocklist spam No spam</code> • <code>/blocklistmode warn</code>"
     ].join("\n")
   },
   "cc:c:filters": {
     title: "Filters",
     body: [
-      "<b>Auto-Reply Filters (Text &amp; Media)</b>",
+      "<b>💬 Auto-Reply Filters</b>",
+      "──────────────────────",
+      "• <b>/filter</b> &lt;trigger&gt; [text | reply media] — Save auto-reply.",
+      "• Supports <code>exact:</code>, <code>prefix:</code>, <code>(a, b)</code>, <code>%%%</code> variants, fillings &amp; buttons.",
+      "• <b>/filters</b> — List active filters.",
+      "• <b>/stop</b> &lt;trigger&gt; — Delete a filter.",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /filter &lt;trigger&gt; [reply] — Save text or replied photo/GIF/video/sticker/audio/voice/document.",
-      "• Supports exact:, prefix:, (a, b), %%% random replies, {admin}, {user}, {allow_bot}, {protect}, {replytag}, fillings &amp; buttons.",
-      "• Append <code>force</code> (admins) or <code>noformat</code> when calling.",
-      "• /filters — List active filters.",
-      "• /stop &lt;trigger&gt; — Remove filter.",
-      "",
-      "<b>Examples:</b>",
-      "• /filter hello Hey {first}, welcome!",
-      "• (reply to photo/sticker/GIF) /filter poster",
-      "• /filter exact:rules Read /rules first"
+      "<b>💡 Examples:</b>",
+      "<code>/filter hi Hey {first}!</code> • <code>/filter exact:rules Check /rules</code>"
     ].join("\n")
   },
   "cc:c:notes": {
     title: "Notes",
     body: [
-      "<b>Saved Chat Notes (Text &amp; Media)</b>",
+      "<b>📝 Saved Notes</b>",
+      "──────────────────────",
+      "• <b>/save</b> &lt;name&gt; [text | reply media] — Save a note.",
+      "• <b>/get</b> &lt;name&gt; [noformat] or <b>#&lt;name&gt;</b> — Show saved note.",
+      "• <b>/notes</b> — List saved notes.",
+      "• <b>/clear</b> &lt;name&gt; — Delete a note.",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /save &lt;name&gt; [content] — Save text or replied media.",
-      "• /get &lt;name&gt; [noformat] — Fetch saved note.",
-      "• #&lt;name&gt; — Quick note shortcut.",
-      "• /notes — List saved notes.",
-      "• /clear &lt;name&gt; — Delete saved note.",
-      "",
-      "<b>Examples:</b>",
-      "• /save info Group managed by CricxCrate",
-      "• (reply to GIF/video) /save intro",
-      "• #info"
+      "<b>💡 Examples:</b>",
+      "<code>/save schedule Match starts at 7:30 PM</code> • <code>#schedule</code>"
     ].join("\n")
   },
   "cc:c:greetings": {
     title: "Greetings",
     body: [
-      "<b>Welcome &amp; Goodbye Messages</b>",
+      "<b>👋 Welcome &amp; Goodbye</b>",
+      "──────────────────────",
+      "• <b>/setwelcome</b> [text | reply media] — Set welcome message.",
+      "• <b>/welcome</b> &lt;on|off|noformat&gt; • <b>/resetwelcome</b> • <b>/cleanwelcome</b> &lt;on|off&gt;",
+      "• <b>/setgoodbye</b> [text | reply media] — Set goodbye message.",
+      "• <b>/goodbye</b> &lt;on|off|noformat&gt; • <b>/resetgoodbye</b>",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /welcome &lt;yes/no/on/off|noformat&gt; — Enable/disable welcomes or show raw text.",
-      "• /setwelcome [text|reply media] — Set welcome message, fillings, buttons, or media.",
-      "• /resetwelcome — Reset welcome message and media.",
-      "• /cleanwelcome &lt;yes/no/on/off&gt; — Delete old welcome after 5m or on new join.",
-      "• /goodbye &lt;yes/no/on/off|noformat&gt; — Enable/disable goodbyes or show raw text.",
-      "• /setgoodbye [text|reply media] — Set goodbye message, fillings, buttons, or media.",
-      "• /resetgoodbye — Reset goodbye message and media.",
-      "",
-      "<b>Examples:</b>",
-      "• /setwelcome Welcome {first} to {chatname}! {rules}",
-      "• /welcome on",
-      "• /setgoodbye Goodbye {first}!",
-      "• /goodbye on"
+      "<b>💡 Examples:</b>",
+      "<code>/setwelcome Welcome {first} to {chatname}!</code> • <code>/welcome on</code>"
     ].join("\n")
   },
   "cc:c:pin": {
     title: "Pin & Linked",
     body: [
-      "<b>Pin &amp; Linked Channel Controls</b>",
+      "<b>📌 Pin &amp; Linked Channel</b>",
+      "──────────────────────",
+      "• <b>/pinned</b> — Jump to pinned message.",
+      "• <b>/pin</b> [loud|notify] (reply) — Pin message.",
+      "• <b>/permapin</b> &lt;text&gt; — Send and pin message.",
+      "• <b>/unpin</b> [reply] • <b>/unpinall</b>",
+      "• <b>/antichannelpin</b> &lt;on|off&gt; • <b>/cleanlinked</b> &lt;on|off&gt;",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /pinned — Show current pinned message.",
-      "• /pin [loud|notify] — Pin replied message.",
-      "• /permapin &lt;text&gt; — Send and pin formatted message.",
-      "• /unpin [reply] — Unpin current or replied pinned message.",
-      "• /unpinall — Unpin all messages.",
-      "• /antichannelpin &lt;yes/no/on/off&gt; — Block auto-pin from linked channel.",
-      "• /cleanlinked &lt;yes/no/on/off&gt; — Delete linked channel posts.",
-      "",
-      "<b>Examples:</b>",
-      "• /pin loud",
-      "• /permapin Important Notice! {rules}",
-      "• /antichannelpin on"
+      "<b>💡 Examples:</b>",
+      "<code>/pin loud</code> • <code>/permapin Live Match Thread!</code>"
     ].join("\n")
   },
   "cc:c:purges": {
     title: "Purges & Cleanup",
     body: [
-      "<b>Message Purges &amp; Command Cleanup</b>",
+      "<b>🧹 Purges &amp; Cleanup</b>",
+      "──────────────────────",
+      "• <b>/purge</b> [X] (reply) — Delete messages from replied message.",
+      "• <b>/spurge</b> [X] (reply) — Purge silently.",
+      "• <b>/del</b> (reply) — Delete replied message.",
+      "• <b>/purgefrom</b> • <b>/purgeto</b>",
+      "• <b>/cleancommand</b> &lt;all|admin|user|other&gt; • <b>/keepcommand</b> • <b>/cleancommandtypes</b>",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /purge [X] — Delete messages from replied message (or next X).",
-      "• /spurge [X] — Silently purge messages.",
-      "• /del — Delete replied message.",
-      "• /purgefrom — Mark purge start message.",
-      "• /purgeto — Purge from start marker to replied/current message.",
-      "• /cleancommand &lt;all/admin/user/other&gt; — Auto-delete command types.",
-      "• /keepcommand &lt;type(s)&gt; — Stop auto-deleting command types.",
-      "• /cleancommandtypes — List command clean types.",
-      "",
-      "<b>Examples:</b>",
-      "• /purge",
-      "• /purge 15",
-      "• /spurge"
+      "<b>💡 Examples:</b>",
+      "<code>/purge</code> • <code>/purge 10</code> • <code>/spurge</code>"
     ].join("\n")
   },
   "cc:c:rules": {
     title: "Rules",
     body: [
-      "<b>Chat Rules</b>",
+      "<b>📜 Group Rules</b>",
+      "──────────────────────",
+      "• <b>/rules</b> [noformat] — Show group rules.",
+      "• <b>/setrules</b> &lt;text&gt; — Set group rules.",
+      "• <b>/privaterules</b> &lt;on|off&gt; — Send rules via DM button.",
+      "• <b>/resetrules</b> • <b>/setrulesbutton</b> &lt;label&gt; • <b>/resetrulesbutton</b>",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /rules [noformat] — Show group rules or raw text.",
-      "• /setrules &lt;text&gt; — Set group rules.",
-      "• /privaterules &lt;yes/no/on/off&gt; — Send rules via DM button.",
-      "• /resetrules — Reset rules.",
-      "• /setrulesbutton &lt;label&gt; — Set {rules} button label.",
-      "• /resetrulesbutton — Reset {rules} button label.",
-      "",
-      "<b>Examples:</b>",
-      "• /setrules 1. Be respectful 2. No spam",
-      "• /setrulesbutton View Rules",
-      "• /privaterules on"
+      "<b>💡 Examples:</b>",
+      "<code>/setrules 1. No spam 2. Respect members</code> • <code>/rules</code>"
     ].join("\n")
   },
   "cc:c:raid_misc": {
-    title: "Raid, Night & Tools",
+    title: "Raid, Polls & Tools",
     body: [
-      "<b>Anti-Raid, Night/Slow Mode &amp; Utilities</b>",
+      "<b>🛠️ Raid, Polls &amp; Tools</b>",
+      "──────────────────────",
+      "• <b>/poll</b> &lt;Question&gt; | &lt;Opt1&gt; | &lt;Opt2&gt; — Create a poll.",
+      "• <b>/stoppoll</b> (reply to poll) — Stop an active poll.",
+      "• <b>/raidmode</b> &lt;on|off|time&gt; • <b>/autoraid</b> &lt;n|off&gt; • <b>/raidactiontime</b> &lt;time&gt;",
+      "• <b>/slowmode</b> &lt;time|off&gt; • <b>/nightmode</b> &lt;on|off&gt; • <b>/setnightmode</b> &lt;HH:MM&gt; &lt;HH:MM&gt;",
+      "• <b>/report</b> [reason] or <b>@admin</b> • <b>/reports</b> &lt;on|off&gt;",
+      "• <b>/id</b> • <b>/info</b> [reply | @user | ID] • <b>/chatinfo</b>",
       "",
-      "<b>Commands &amp; Usage:</b>",
-      "• /raidmode &lt;yes/no/on/off|time&gt; — Toggle or time-box raid protection.",
-      "• /autoraid &lt;number|off&gt; — Auto-enable raid mode after N joins in 20s.",
-      "• /raidactiontime &lt;time&gt; — Set default raid duration.",
-      "• /slowmode &lt;time|off&gt; — Set slowmode delay.",
-      "• /nightmode &lt;yes/no/on/off&gt; — Toggle or view night restriction window (UTC).",
-      "• /setnightmode &lt;HH:MM&gt; &lt;HH:MM&gt; — Set night window (UTC).",
-      "• /report [reason] or @admin — Report replied message to admins.",
-      "• /reports &lt;yes/no/on/off&gt; — Toggle report command.",
-      "• /id, /info [@user|id|reply], /chatinfo — Info commands.",
-      "",
-      "<b>Examples:</b>",
-      "• /raidmode 10m",
-      "• /slowmode 5s",
-      "• /setnightmode 23:00 06:00",
-      "• /report Spam"
+      "<b>💡 Examples:</b>",
+      "<code>/poll Winner? | India | Australia</code> • <code>/slowmode 10s</code>"
     ].join("\n")
   }
 };
@@ -551,21 +476,21 @@ function buildStartIntro(botUsername = "") {
 
   return {
     text: [
-      `<b>${BOT_NAME} — Moderation &amp; Community Suite</b>`,
+      `<b>✨ ${BOT_NAME} — Moderation &amp; Community Suite</b>`,
+      "──────────────────────",
+      "Fast, reliable moderation for active groups with instant webhook execution and persistent storage.",
       "",
-      "Engineered for high-traffic communities, match chats, and moderated groups with instant webhook execution and persistent Redis storage.",
+      "• <b>🛡️ Admin &amp; Access:</b> Promotions, custom titles, admin cache, anonymous admin &amp; approvals",
+      "• <b>🔨 Enforcement:</b> Ban, mute, kick, timed actions, warnings, 52 locks, allowlist, antiflood &amp; blocklists",
+      "• <b>⚡ Automation:</b> Welcome/goodbye media &amp; text, polls, pins, purges, rules, filters, notes &amp; raid/night controls",
       "",
-      "• <b>Admin &amp; Access:</b> Promotions, custom ranks, admin cache, anonymous admin bypass &amp; user approvals",
-      "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 content locks, allowlists, antiflood &amp; wildcard blocklists",
-      "• <b>Smart Automation:</b> Media/text greetings, pin tools, bulk purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
-      "",
-      "Select <b>Help</b> below to inspect every command category."
+      "Tap <b>Help</b> below to explore all commands."
     ].join("\n"),
     replyMarkup: {
       inline_keyboard: [
         [
-          { text: "Help", callback_data: "cc:help_menu" },
-          { text: "Add to Group", url: addLink }
+          { text: "📚 Help", callback_data: "cc:help_menu" },
+          { text: "➕ Add to Group", url: addLink }
         ]
       ]
     }
@@ -576,35 +501,35 @@ function buildHelpMenuKeyboard() {
   return {
     inline_keyboard: [
       [
-        { text: "Admin", callback_data: "cc:c:admin" },
-        { text: "Approval", callback_data: "cc:c:approval" },
-        { text: "Bans", callback_data: "cc:c:bans" }
+        { text: "🛡️ Admin", callback_data: "cc:c:admin" },
+        { text: "✅ Approval", callback_data: "cc:c:approval" },
+        { text: "🔨 Bans", callback_data: "cc:c:bans" }
       ],
       [
-        { text: "Mutes", callback_data: "cc:c:mutes" },
-        { text: "Kicks", callback_data: "cc:c:kicks" },
-        { text: "Warnings", callback_data: "cc:c:warnings" }
+        { text: "🔇 Mutes", callback_data: "cc:c:mutes" },
+        { text: "👢 Kicks", callback_data: "cc:c:kicks" },
+        { text: "⚠️ Warnings", callback_data: "cc:c:warnings" }
       ],
       [
-        { text: "Locks", callback_data: "cc:c:locks" },
-        { text: "Antiflood", callback_data: "cc:c:flood" },
-        { text: "Blocklists", callback_data: "cc:c:blocklist" }
+        { text: "🔒 Locks", callback_data: "cc:c:locks" },
+        { text: "🌊 Antiflood", callback_data: "cc:c:flood" },
+        { text: "🚫 Blocklists", callback_data: "cc:c:blocklist" }
       ],
       [
-        { text: "Filters", callback_data: "cc:c:filters" },
-        { text: "Notes", callback_data: "cc:c:notes" },
-        { text: "Greetings", callback_data: "cc:c:greetings" }
+        { text: "💬 Filters", callback_data: "cc:c:filters" },
+        { text: "📝 Notes", callback_data: "cc:c:notes" },
+        { text: "👋 Greetings", callback_data: "cc:c:greetings" }
       ],
       [
-        { text: "Pin & Linked", callback_data: "cc:c:pin" },
-        { text: "Purges", callback_data: "cc:c:purges" },
-        { text: "Rules", callback_data: "cc:c:rules" }
+        { text: "📌 Pin & Linked", callback_data: "cc:c:pin" },
+        { text: "🧹 Purges", callback_data: "cc:c:purges" },
+        { text: "📜 Rules", callback_data: "cc:c:rules" }
       ],
       [
-        { text: "Raid, Night & Tools", callback_data: "cc:c:raid_misc" }
+        { text: "🛠️ Raid, Polls & Tools", callback_data: "cc:c:raid_misc" }
       ],
       [
-        { text: "Overview", callback_data: "cc:intro" }
+        { text: "🏠 Overview", callback_data: "cc:intro" }
       ]
     ]
   };
@@ -614,8 +539,8 @@ function buildCategoryReturnKeyboard() {
   return {
     inline_keyboard: [
       [
-        { text: "Help", callback_data: "cc:help_menu" },
-        { text: "Overview", callback_data: "cc:intro" }
+        { text: "📚 Help Menu", callback_data: "cc:help_menu" },
+        { text: "🏠 Overview", callback_data: "cc:intro" }
       ]
     ]
   };
@@ -1003,7 +928,7 @@ async function handleCallback(cq, token) {
   if (!chatId) return;
 
   if (data === "cc:help_menu") {
-    const menuText = `<b>${BOT_NAME} Help Menu</b>\n\nChoose a command category:`;
+    const menuText = `<b>📚 ${BOT_NAME} Help Menu</b>\n\nChoose a command category:`;
     if (messageId) {
       await safeTgApi(token, "editMessageText", {
         chat_id: chatId,
@@ -1056,9 +981,21 @@ function detectLockMatches(msg) {
   const text = msg.text || msg.caption || "";
   const entities = msg.entities || msg.caption_entities || [];
 
-  if (msg.media_group_id) matches.add("album");
+  if (msg.media_group_id) {
+    matches.add("album");
+    matches.add("slideshow");
+    matches.add("collage");
+  }
   if (msg.sender_chat && msg.sender_chat.id === msg.chat.id) matches.add("anonchannel");
   if (msg.audio) matches.add("audio");
+  if (msg.voice) {
+    matches.add("voice");
+    matches.add("audio");
+  }
+  if (msg.video_note) {
+    matches.add("videonote");
+    matches.add("audio");
+  }
   if (msg.new_chat_members?.some((m) => m.is_bot)) matches.add("bot");
   if (msg.reply_markup?.inline_keyboard) matches.add("button");
   if (msg.checklist) matches.add("checklist");
@@ -1072,8 +1009,6 @@ function detectLockMatches(msg) {
   if (msg.poll) matches.add("poll");
   if (msg.story) matches.add("forwardstory");
   if (msg.video) matches.add("video");
-  if (msg.video_note) matches.add("videonote");
-  if (msg.voice) matches.add("voice");
   if (msg.web_app_data) matches.add("widget");
   if (msg.external_reply) matches.add("externalreply");
   if (msg.dice) {
@@ -1081,11 +1016,11 @@ function detectLockMatches(msg) {
     matches.add("emoji");
   }
 
-  if (msg.forward_origin) {
+  if (msg.forward_origin || msg.forward_from || msg.forward_from_chat) {
     matches.add("forward");
-    const t = msg.forward_origin.type;
-    if (t === "user" || t === "hidden_user") matches.add("forwarduser");
-    else if (t === "channel" || t === "chat") matches.add("forwardchannel");
+    const t = msg.forward_origin?.type;
+    if (t === "user" || t === "hidden_user" || msg.forward_from) matches.add("forwarduser");
+    else if (t === "channel" || t === "chat" || msg.forward_from_chat) matches.add("forwardchannel");
   }
 
   if (text) {
@@ -1277,11 +1212,13 @@ async function applyPunishment(token, chatId, targetUser, action, durationSecond
     const payload = { chat_id: chatId, user_id: targetUser.id };
     if (untilDate) payload.until_date = untilDate;
     await tgApi(token, "banChatMember", payload);
-    out = `${label} ${action === "tban" && durationSeconds ? `temporarily banned (${durationSeconds}s)` : "banned"}${reason ? `\nReason: ${reason}` : ""}`;
+    out = action === "tban" && durationSeconds
+      ? `I've temporarily banned ${label} (${durationSeconds}s)${reason ? `\nReason: ${reason}` : ""}`
+      : `I've banned ${label}${reason ? `\nReason: ${reason}` : ""}`;
   } else if (action === "kick") {
     await tgApi(token, "banChatMember", { chat_id: chatId, user_id: targetUser.id });
     await tgApi(token, "unbanChatMember", { chat_id: chatId, user_id: targetUser.id, only_if_banned: true });
-    out = `${label} kicked${reason ? `\nReason: ${reason}` : ""}`;
+    out = `I've kicked ${label}${reason ? `\nReason: ${reason}` : ""}`;
   } else if (action === "mute" || action === "tmute") {
     const payload = {
       chat_id: chatId,
@@ -1290,7 +1227,7 @@ async function applyPunishment(token, chatId, targetUser, action, durationSecond
     };
     if (untilDate) payload.until_date = untilDate;
     await tgApi(token, "restrictChatMember", payload);
-    out = `${label} muted${durationSeconds ? ` (${durationSeconds}s)` : ""}${reason ? `\nReason: ${reason}` : ""}`;
+    out = `I've muted ${label}${durationSeconds ? ` (${durationSeconds}s)` : ""}${reason ? `\nReason: ${reason}` : ""}`;
   } else {
     throw new Error(`Unsupported action: ${action}`);
   }
@@ -1301,7 +1238,7 @@ async function applyPunishment(token, chatId, targetUser, action, durationSecond
   return out;
 }
 
-async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessageId = null, logChatId = "") {
+async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessageId = null, logChatId = "", silent = false) {
   const now = Date.now();
   const uid = String(targetUser.id);
   const wCfg = cfg.warnings;
@@ -1326,13 +1263,17 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
     await storeSet(warnKey, []);
     if (PUNISHMENT_ACTIONS.has(wCfg.mode)) {
       const msg = await applyPunishment(token, chatId, targetUser, wCfg.mode, wCfg.durationSeconds, reason, logChatId);
-      await safeSend(token, chatId, `${msg} (reached ${wCfg.limit}/${wCfg.limit} warnings).`, undefined, replyToMessageId);
+      if (!silent) {
+        await safeSend(token, chatId, `${msg} (reached ${wCfg.limit}/${wCfg.limit} warnings).`, undefined, replyToMessageId);
+      }
       return;
     }
   }
 
   const text = `Warning (${warns.length}/${wCfg.limit || 3}) issued to ${label}.\nReason: ${reason || "Warning"}`;
-  await safeSend(token, chatId, text, undefined, replyToMessageId);
+  if (!silent) {
+    await safeSend(token, chatId, text, undefined, replyToMessageId);
+  }
   if (logChatId) {
     await sendAuditLog(token, logChatId, `Chat ${chatId}: ${text.replace(/\n/g, " | ")}`);
   }
@@ -1341,7 +1282,7 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
 async function runEnforcementAction(token, chatId, sender, mode, durationSeconds, reason, logChatId) {
   if (!mode || mode === "nothing") return;
   if (mode === "warn") {
-    await applyWarning(token, chatId, sender, reason, await getChatConfig(chatId), null, logChatId);
+    await applyWarning(token, chatId, sender, reason, await getChatConfig(chatId), null, logChatId, false);
     return;
   }
   if (!PUNISHMENT_ACTIONS.has(mode)) return;
@@ -1366,6 +1307,18 @@ async function handleMessage(message, token, logChatId = "") {
       last_name: sender.last_name,
       username: sender.username,
     });
+  }
+
+  if (message.reply_to_message?.from?.id) {
+    const rf = message.reply_to_message.from;
+    if (rf.username) {
+      await storeSet(`user:${rf.username.toLowerCase()}`, {
+        id: rf.id,
+        first_name: rf.first_name,
+        last_name: rf.last_name,
+        username: rf.username,
+      });
+    }
   }
 
   const rawText = typeof message.text === "string"
@@ -1399,7 +1352,7 @@ async function handleMessage(message, token, logChatId = "") {
       await safeSend(
         token,
         chatId,
-        `<b>${BOT_NAME} Help Menu</b>\n\nChoose a command category:`,
+        `<b>📚 ${BOT_NAME} Help Menu</b>\n\nChoose a command category:`,
         buildHelpMenuKeyboard(),
         undefined,
         false,
@@ -1424,6 +1377,14 @@ async function handleMessage(message, token, logChatId = "") {
 
   if (message.new_chat_members?.length > 0) {
     for (const member of message.new_chat_members) {
+      if (member?.username && member?.id) {
+        await storeSet(`user:${member.username.toLowerCase()}`, {
+          id: member.id,
+          first_name: member.first_name,
+          last_name: member.last_name,
+          username: member.username,
+        });
+      }
       await processNewMemberJoin(token, chatId, cfg, member, message.chat);
     }
     return;
@@ -1493,6 +1454,7 @@ async function handleMessage(message, token, logChatId = "") {
       "approve", "unapprove", "approved", "unapproveall",
       "setflood", "setfloodtimer", "floodmode", "clearflood",
       "raidmode", "autoraid", "raidactiontime", "slowmode", "nightmode", "setnightmode",
+      "poll", "stoppoll",
       "addblocklist", "rmblocklist", "unblocklistall", "blocklistmode",
       "blocklistdelete", "setblocklistreason", "resetblocklistreason",
       "cleancommand", "keepcommand",
@@ -1504,7 +1466,8 @@ async function handleMessage(message, token, logChatId = "") {
       "setrules", "privaterules", "resetrules", "setrulesbutton", "resetrulesbutton",
       "warn", "dwarn", "swarn", "rmwarn", "resetwarn", "resetallwarns",
       "warnmode", "warnlimit", "warntime",
-      "ban", "dban", "sban", "tban", "unban", "mute", "dmute", "smute", "tmute", "unmute",
+      "ban", "dban", "sban", "tban", "unban",
+      "mute", "dmute", "smute", "tmute", "unmute",
       "kick", "dkick", "skick"
     ]);
     const userKnownSet = new Set([
@@ -1538,7 +1501,14 @@ async function handleMessage(message, token, logChatId = "") {
       if (!cfg.locks[lType]) continue;
       if (allowlisted && ALLOWLISTABLE_LOCKS.has(lType)) continue;
 
-      await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+      const delRes = await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+      if (!delRes?.ok) {
+        await safeSend(
+          token,
+          chatId,
+          `Locked (${lType}) triggered for ${sender.first_name}, but could not delete message (check bot delete permission).`
+        );
+      }
       const lConf = cfg.lockConfig[lType];
       const action = lConf?.action || (cfg.lockWarns ? "warn" : null);
       if (action) {
@@ -1641,7 +1611,7 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      `<b>${BOT_NAME} Help Menu</b>\n\nChoose a command category:`,
+      `<b>📚 ${BOT_NAME} Help Menu</b>\n\nChoose a command category:`,
       buildHelpMenuKeyboard(),
       undefined,
       false,
@@ -1655,7 +1625,9 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      `Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}`
+      `Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}`,
+      undefined,
+      message.message_id
     );
     return;
   }
@@ -1666,7 +1638,9 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      `User Info:\nName: ${u?.first_name || "N/A"}${u?.last_name ? ` ${u.last_name}` : ""}\nUsername: ${u?.username ? `@${u.username}` : "None"}\nID: ${u?.id ?? "N/A"}`
+      `User Info:\nName: ${u?.first_name || "N/A"}${u?.last_name ? ` ${u.last_name}` : ""}\nUsername: ${u?.username ? `@${u.username}` : "None"}\nID: ${u?.id ?? "N/A"}`,
+      undefined,
+      message.message_id
     );
     return;
   }
@@ -1676,18 +1650,20 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      `Chat Info:\nTitle: ${message.chat.title || "Group"}\nID: ${chatId}\nType: ${message.chat.type}\nMembers: ${countRes?.result ?? "N/A"}`
+      `Chat Info:\nTitle: ${message.chat.title || "Group"}\nID: ${chatId}\nType: ${message.chat.type}\nMembers: ${countRes?.result ?? "N/A"}`,
+      undefined,
+      message.message_id
     );
     return;
   }
 
   if (cmd === "/report") {
     if (!cfg.reportsEnabled) {
-      await safeSend(token, chatId, "Reports are disabled in this chat.");
+      await safeSend(token, chatId, "Reports are disabled in this chat.", undefined, message.message_id);
       return;
     }
     if (!message.reply_to_message) {
-      await safeSend(token, chatId, "Reply to a message with /report to notify admins.");
+      await safeSend(token, chatId, "Reply to user or mention Telegram unique ID.", undefined, message.message_id);
       return;
     }
     const admins = await getChatAdminsCached(token, chatId);
@@ -1697,7 +1673,7 @@ async function handleMessage(message, token, logChatId = "") {
       chatId,
       `Report sent to admins${mentions.length ? `: ${mentions.slice(0, 8).join(" ")}` : "."}${cmdArgsStr ? `\nReason: ${cmdArgsStr}` : ""}`,
       undefined,
-      message.reply_to_message.message_id
+      message.message_id
     );
     return;
   }
@@ -1714,12 +1690,12 @@ async function handleMessage(message, token, logChatId = "") {
   if (cmd === "/get") {
     const noteName = (cmdArgs[0] || "").toLowerCase();
     if (!noteName) {
-      await safeSend(token, chatId, "Usage: /get <note_name>");
+      await safeSend(token, chatId, "Usage: /get <note_name>", undefined, message.message_id);
       return;
     }
     const notes = (await storeGet(`notes:${chatId}`)) || {};
     if (!notes[noteName]) {
-      await safeSend(token, chatId, "Note not found.");
+      await safeSend(token, chatId, "Note not found.", undefined, message.message_id);
       return;
     }
     await sendEntryResponse(
@@ -1740,7 +1716,9 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      keys.length ? `Saved notes:\n${keys.map((k) => `#${k}`).join(", ")}` : "No saved notes."
+      keys.length ? `Saved notes:\n${keys.map((k) => `#${k}`).join(", ")}` : "No saved notes.",
+      undefined,
+      message.message_id
     );
     return;
   }
@@ -1752,7 +1730,7 @@ async function handleMessage(message, token, logChatId = "") {
       const title = a.custom_title ? ` (${a.custom_title})` : "";
       return `- ${a.user.first_name}${a.user.username ? ` (@${a.user.username})` : ""}${role}${title}`;
     });
-    await safeSend(token, chatId, lines.length ? `Admins:\n${lines.join("\n")}` : "No admins found.");
+    await safeSend(token, chatId, lines.length ? `Admins:\n${lines.join("\n")}` : "No admins found.", undefined, message.message_id);
     return;
   }
 
@@ -1760,7 +1738,7 @@ async function handleMessage(message, token, logChatId = "") {
     const target = await resolveTargetUser(token, message, parts);
     const checkUser = target.id ? target : { id: senderId, label: sender?.username ? `@${sender.username}` : String(senderId) };
     const isApp = checkUser.id && cfg.approvedUsers.includes(checkUser.id);
-    await safeSend(token, chatId, `${checkUser.label} is ${isApp ? "approved" : "not approved"}.`);
+    await safeSend(token, chatId, `${checkUser.label} is ${isApp ? "approved" : "not approved"}.`, undefined, message.message_id);
     return;
   }
 
@@ -1768,7 +1746,9 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      `Flood settings:\nLimit: ${cfg.flood.limit || "off"}\nTimer: ${cfg.flood.timerCount ? `${cfg.flood.timerCount} msgs / ${cfg.flood.timerSeconds}s` : "off"}\nAction: ${cfg.flood.action}\nClear flood: ${cfg.flood.clearFlood ? "on" : "off"}`
+      `Flood settings:\nLimit: ${cfg.flood.limit || "off"}\nTimer: ${cfg.flood.timerCount ? `${cfg.flood.timerCount} msgs / ${cfg.flood.timerSeconds}s` : "off"}\nAction: ${cfg.flood.action}\nClear flood: ${cfg.flood.clearFlood ? "on" : "off"}`,
+      undefined,
+      message.message_id
     );
     return;
   }
@@ -1780,27 +1760,29 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      `Blocklist (mode: ${cfg.blocklistMode}, delete: ${cfg.blocklistDelete ? "on" : "off"}):\n${listStr}`
+      `Blocklist (mode: ${cfg.blocklistMode}, delete: ${cfg.blocklistDelete ? "on" : "off"}):\n${listStr}`,
+      undefined,
+      message.message_id
     );
     return;
   }
 
   if (cmd === "/cleancommandtypes") {
-    await safeSend(token, chatId, "Cleanable command types: all, admin, user, other");
+    await safeSend(token, chatId, "Cleanable command types: all, admin, user, other", undefined, message.message_id);
     return;
   }
 
   if (cmd === "/locktypes") {
-    await safeSend(token, chatId, `Lock types (${LOCK_TYPES.length}):\n${LOCK_TYPES.join(", ")}`);
+    await safeSend(token, chatId, `Lock types (${LOCK_TYPES.length}):\n${LOCK_TYPES.join(", ")}`, undefined, message.message_id);
     return;
   }
 
   if (cmd === "/locks") {
     const locked = Object.keys(cfg.locks).filter((k) => cfg.locks[k]);
     if (cmdArgs[0]?.toLowerCase() === "list") {
-      await safeSend(token, chatId, `Locked: ${locked.join(", ") || "none"}\nAll: ${LOCK_TYPES.join(", ")}`);
+      await safeSend(token, chatId, `Locked: ${locked.join(", ") || "none"}\nAll: ${LOCK_TYPES.join(", ")}`, undefined, message.message_id);
     } else {
-      await safeSend(token, chatId, `Currently locked:\n${locked.join(", ") || "none"}`);
+      await safeSend(token, chatId, `Currently locked:\n${locked.join(", ") || "none"}`, undefined, message.message_id);
     }
     return;
   }
@@ -1810,7 +1792,9 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      filters.length ? `Active filters:\n${filters.map((f) => `- ${f.trigger}${f.media ? ` [${f.media.type}]` : ""}`).join("\n")}` : "No filters configured."
+      filters.length ? `Active filters:\n${filters.map((f) => `- ${f.trigger}${f.media ? ` [${f.media.type}]` : ""}`).join("\n")}` : "No filters configured.",
+      undefined,
+      message.message_id
     );
     return;
   }
@@ -1820,23 +1804,23 @@ async function handleMessage(message, token, logChatId = "") {
       const chatRes = await tgApi(token, "getChat", { chat_id: chatId });
       const pId = chatRes?.result?.pinned_message?.message_id;
       if (!pId) {
-        await safeSend(token, chatId, "No pinned message found.");
+        await safeSend(token, chatId, "No pinned message found.", undefined, message.message_id);
         return;
       }
       await safeSend(token, chatId, "Current pinned message.", undefined, pId);
     } catch (err) {
-      await safeSend(token, chatId, `Failed to get pinned message: ${err.message}`);
+      await safeSend(token, chatId, `Failed to get pinned message: ${err.message}`, undefined, message.message_id);
     }
     return;
   }
 
   if (cmd === "/rules") {
     if (!cfg.rules.text) {
-      await safeSend(token, chatId, "No rules have been set for this chat.");
+      await safeSend(token, chatId, "No rules have been set for this chat.", undefined, message.message_id);
       return;
     }
     if (cmdArgs[0]?.toLowerCase() === "noformat") {
-      await safeSend(token, chatId, cfg.rules.text);
+      await safeSend(token, chatId, cfg.rules.text, undefined, message.message_id);
       return;
     }
     if (cfg.rules.privateRules && senderId) {
@@ -1855,7 +1839,7 @@ async function handleMessage(message, token, logChatId = "") {
     }
     const filled = applyFillings(cfg.rules.text, sender, message.chat, { rulesButton: cfg.rules.buttonText });
     const { text, replyMarkup } = extractButtonsFromText(filled);
-    await safeSend(token, chatId, text, replyMarkup);
+    await safeSend(token, chatId, text, replyMarkup, message.message_id);
     return;
   }
 
@@ -1863,7 +1847,9 @@ async function handleMessage(message, token, logChatId = "") {
     await safeSend(
       token,
       chatId,
-      `Warning settings:\nLimit: ${cfg.warnings.limit}\nMode: ${cfg.warnings.mode}\nExpire time: ${cfg.warnings.timeSeconds ? `${cfg.warnings.timeSeconds}s` : "off"}`
+      `Warning settings:\nLimit: ${cfg.warnings.limit}\nMode: ${cfg.warnings.mode}\nExpire time: ${cfg.warnings.timeSeconds ? `${cfg.warnings.timeSeconds}s` : "off"}`,
+      undefined,
+      message.message_id
     );
     return;
   }
@@ -1872,14 +1858,14 @@ async function handleMessage(message, token, logChatId = "") {
     if (!senderId) return;
     const right = await checkBotPermission(token, chatId, "can_restrict_members");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await safeSend(token, chatId, right.message, undefined, message.message_id);
       return;
     }
     try {
       const resText = await applyPunishment(token, chatId, sender, "kick", 0, "Used /kickme", logChatId);
-      await safeSend(token, chatId, resText);
+      await safeSend(token, chatId, resText, undefined, message.message_id);
     } catch (err) {
-      await safeSend(token, chatId, `Kick failed: ${err.message}`);
+      await safeSend(token, chatId, `Kick failed: ${err.message}`, undefined, message.message_id);
     }
     return;
   }
@@ -1889,6 +1875,7 @@ async function handleMessage(message, token, logChatId = "") {
     "/approve", "/unapprove", "/approved", "/unapproveall",
     "/setflood", "/setfloodtimer", "/floodmode", "/clearflood",
     "/raidmode", "/autoraid", "/raidactiontime", "/slowmode", "/nightmode", "/setnightmode",
+    "/poll", "/stoppoll",
     "/addblocklist", "/rmblocklist", "/unblocklistall", "/blocklistmode",
     "/blocklistdelete", "/setblocklistreason", "/resetblocklistreason",
     "/cleancommand", "/keepcommand",
@@ -1908,7 +1895,7 @@ async function handleMessage(message, token, logChatId = "") {
   if (adminCommands.has(cmd)) {
     if (!senderId || !senderIsAdmin) {
       if (cfg.adminError) {
-        await safeSend(token, chatId, "Only group administrators can use this command.");
+        await safeSend(token, chatId, "Only group administrators can use this command.", undefined, message.message_id);
       }
       return;
     }
@@ -1939,16 +1926,65 @@ async function handleMessage(message, token, logChatId = "") {
 async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs, cmdArgsStr, cleanLine, logChatId = "") {
   const chatId = message.chat.id;
   const senderId = message.from?.id;
+  const adminMsgId = message.message_id;
+
+  const replyAdmin = (text, replyMarkup) =>
+    safeSend(token, chatId, text, replyMarkup, adminMsgId);
+
+  if (cmd === "/poll") {
+    const segments = cmdArgsStr
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const question = (segments[0] || "").slice(0, 300);
+    const options = segments.slice(1, 11).map((o) => o.slice(0, 100));
+
+    if (!question || options.length < 2) {
+      await replyAdmin("Usage: /poll <Question> | <Option 1> | <Option 2> [| Option 3...]");
+      return;
+    }
+
+    try {
+      await tgApi(token, "sendPoll", {
+        chat_id: chatId,
+        question,
+        options,
+        is_anonymous: true,
+        allows_multiple_answers: false,
+      });
+    } catch (err) {
+      await replyAdmin(`Poll failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (cmd === "/stoppoll") {
+    const targetMsgId = message.reply_to_message?.message_id;
+    if (!targetMsgId) {
+      await replyAdmin("Reply to user or mention Telegram unique ID.");
+      return;
+    }
+    try {
+      await tgApi(token, "stopPoll", {
+        chat_id: chatId,
+        message_id: targetMsgId,
+      });
+      await replyAdmin("Poll stopped.");
+    } catch (err) {
+      await replyAdmin(`Stop poll failed: ${err.message}`);
+    }
+    return;
+  }
 
   if (cmd === "/promote" || cmd === "/demote") {
     const right = await checkBotPermission(token, chatId, "can_promote_members");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
     const target = await resolveTargetUser(token, message, parts);
     if (!target.id) {
-      await safeSend(token, chatId, `Specify a target using ${cmd} @username / ${cmd} <user_id> or reply.`);
+      await replyAdmin("Reply to user or mention Telegram unique ID.");
       return;
     }
     const isPromo = cmd === "/promote";
@@ -1964,9 +2000,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         can_promote_members: false,
       });
       adminCache.delete(chatId);
-      await safeSend(token, chatId, `${isPromo ? "Promoted" : "Demoted"} ${target.label}.`);
+      await replyAdmin(`${isPromo ? "Promoted" : "Demoted"} ${target.label}.`);
     } catch (err) {
-      await safeSend(token, chatId, `${isPromo ? "Promote" : "Demote"} failed: ${err.message}`);
+      await replyAdmin(`${isPromo ? "Promote" : "Demote"} failed: ${err.message}`);
     }
     return;
   }
@@ -1974,13 +2010,13 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/title") {
     const right = await checkBotPermission(token, chatId, "can_promote_members");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
     const target = await resolveTargetUser(token, message, parts);
     const titleStr = target.args.join(" ").trim();
     if (!target.id || !titleStr) {
-      await safeSend(token, chatId, "Usage: /title [@user|id|reply] <custom_title>");
+      await replyAdmin("Reply to user or mention Telegram unique ID.");
       return;
     }
     try {
@@ -1990,52 +2026,52 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         custom_title: titleStr.slice(0, 16),
       });
       adminCache.delete(chatId);
-      await safeSend(token, chatId, `Updated title for ${target.label} to "${titleStr.slice(0, 16)}".`);
+      await replyAdmin(`Updated title for ${target.label} to "${titleStr.slice(0, 16)}".`);
     } catch (err) {
-      await safeSend(token, chatId, `Title update failed: ${err.message}`);
+      await replyAdmin(`Title update failed: ${err.message}`);
     }
     return;
   }
 
   if (cmd === "/admincache") {
     await getChatAdminsCached(token, chatId, true);
-    await safeSend(token, chatId, "Admin cache refreshed.");
+    await replyAdmin("Admin cache refreshed.");
     return;
   }
 
   if (cmd === "/anonadmin") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /anonadmin <yes/no/on/off>");
+      await replyAdmin("Usage: /anonadmin <yes/no/on/off>");
       return;
     }
     cfg.anonAdmin = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Anonymous admin bypass set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Anonymous admin bypass set to ${flag ? "on" : "off"}.`);
     return;
   }
 
   if (cmd === "/adminerror") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /adminerror <yes/no/on/off>");
+      await replyAdmin("Usage: /adminerror <yes/no/on/off>");
       return;
     }
     cfg.adminError = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Admin error messages set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Admin error messages set to ${flag ? "on" : "off"}.`);
     return;
   }
 
   if (cmd === "/reports") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /reports <yes/no/on/off>");
+      await replyAdmin("Usage: /reports <yes/no/on/off>");
       return;
     }
     cfg.reportsEnabled = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Reports set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Reports set to ${flag ? "on" : "off"}.`);
     return;
   }
 
@@ -2045,18 +2081,18 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       cfg.raid.enabled = true;
       cfg.raid.untilTs = Date.now() + dur * 1000;
       await saveChatConfig(chatId, cfg);
-      await safeSend(token, chatId, `Raid mode enabled for ${dur}s.`);
+      await replyAdmin(`Raid mode enabled for ${dur}s.`);
       return;
     }
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /raidmode <yes/no/on/off|duration>");
+      await replyAdmin("Usage: /raidmode <yes/no/on/off|duration>");
       return;
     }
     cfg.raid.enabled = flag;
     cfg.raid.untilTs = flag ? Date.now() + (cfg.raid.actionSeconds || 600) * 1000 : 0;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Raid mode ${flag ? "enabled" : "disabled"}.`);
+    await replyAdmin(`Raid mode ${flag ? "enabled" : "disabled"}.`);
     return;
   }
 
@@ -2065,36 +2101,36 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     if (["0", "off", "no"].includes(val)) {
       cfg.raid.autoThreshold = 0;
       await saveChatConfig(chatId, cfg);
-      await safeSend(token, chatId, "Auto-raid disabled.");
+      await replyAdmin("Auto-raid disabled.");
       return;
     }
     const n = parseInt(val, 10);
     if (!n || n < 2) {
-      await safeSend(token, chatId, "Usage: /autoraid <number|off>");
+      await replyAdmin("Usage: /autoraid <number|off>");
       return;
     }
     cfg.raid.autoThreshold = n;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Auto-raid threshold set to ${n} joins.`);
+    await replyAdmin(`Auto-raid threshold set to ${n} joins.`);
     return;
   }
 
   if (cmd === "/raidactiontime") {
     const secs = parseDurationSeconds(cmdArgs[0]);
     if (!secs || secs < 1) {
-      await safeSend(token, chatId, "Usage: /raidactiontime <duration>");
+      await replyAdmin("Usage: /raidactiontime <duration>");
       return;
     }
     cfg.raid.actionSeconds = secs;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Raid action duration set to ${secs}s.`);
+    await replyAdmin(`Raid action duration set to ${secs}s.`);
     return;
   }
 
   if (cmd === "/slowmode") {
     const secs = parseDurationSeconds(cmdArgs[0]);
     if (secs === null) {
-      await safeSend(token, chatId, "Usage: /slowmode <duration|off>");
+      await replyAdmin("Usage: /slowmode <duration|off>");
       return;
     }
     try {
@@ -2102,9 +2138,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         chat_id: chatId,
         slow_mode_delay: Math.min(secs, 21600),
       });
-      await safeSend(token, chatId, secs === 0 ? "Slow mode disabled." : `Slow mode set to ${secs}s.`);
+      await replyAdmin(secs === 0 ? "Slow mode disabled." : `Slow mode set to ${secs}s.`);
     } catch (err) {
-      await safeSend(token, chatId, `Slow mode failed: ${err.message}`);
+      await replyAdmin(`Slow mode failed: ${err.message}`);
     }
     return;
   }
@@ -2112,16 +2148,14 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/nightmode") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(
-        token,
-        chatId,
+      await replyAdmin(
         `Night mode is ${cfg.nightMode.enabled ? "on" : "off"} (${cfg.nightMode.startHHMM} - ${cfg.nightMode.endHHMM} UTC).`
       );
       return;
     }
     cfg.nightMode.enabled = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Night mode set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Night mode set to ${flag ? "on" : "off"}.`);
     return;
   }
 
@@ -2129,45 +2163,43 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const s = parseHHMMToMinutes(cmdArgs[0]);
     const e = parseHHMMToMinutes(cmdArgs[1]);
     if (s === null || e === null) {
-      await safeSend(token, chatId, "Usage: /setnightmode <HH:MM> <HH:MM> (UTC)");
+      await replyAdmin("Usage: /setnightmode <HH:MM> <HH:MM> (UTC)");
       return;
     }
     cfg.nightMode.startHHMM = cmdArgs[0].padStart(5, "0");
     cfg.nightMode.endHHMM = cmdArgs[1].padStart(5, "0");
     cfg.nightMode.enabled = true;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Night mode window set to ${cfg.nightMode.startHHMM} - ${cfg.nightMode.endHHMM} UTC.`);
+    await replyAdmin(`Night mode window set to ${cfg.nightMode.startHHMM} - ${cfg.nightMode.endHHMM} UTC.`);
     return;
   }
 
   if (cmd === "/approve") {
     const target = await resolveTargetUser(token, message, parts);
     if (!target.id) {
-      await safeSend(token, chatId, "Specify a user to approve.");
+      await replyAdmin("Reply to user or mention Telegram unique ID.");
       return;
     }
     if (!cfg.approvedUsers.includes(target.id)) cfg.approvedUsers.push(target.id);
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Approved ${target.label}.`);
+    await replyAdmin(`Approved ${target.label}.`);
     return;
   }
 
   if (cmd === "/unapprove") {
     const target = await resolveTargetUser(token, message, parts);
     if (!target.id) {
-      await safeSend(token, chatId, "Specify a user to unapprove.");
+      await replyAdmin("Reply to user or mention Telegram unique ID.");
       return;
     }
     cfg.approvedUsers = cfg.approvedUsers.filter((id) => id !== target.id);
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Unapproved ${target.label}.`);
+    await replyAdmin(`Unapproved ${target.label}.`);
     return;
   }
 
   if (cmd === "/approved") {
-    await safeSend(
-      token,
-      chatId,
+    await replyAdmin(
       cfg.approvedUsers.length ? `Approved IDs:\n${cfg.approvedUsers.join(", ")}` : "No approved users."
     );
     return;
@@ -2176,7 +2208,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/unapproveall") {
     cfg.approvedUsers = [];
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "All users unapproved.");
+    await replyAdmin("All users unapproved.");
     return;
   }
 
@@ -2185,17 +2217,17 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     if (["0", "off", "no"].includes(val)) {
       cfg.flood.limit = 0;
       await saveChatConfig(chatId, cfg);
-      await safeSend(token, chatId, "Antiflood disabled.");
+      await replyAdmin("Antiflood disabled.");
       return;
     }
     const n = parseInt(val, 10);
     if (!n || n < 1) {
-      await safeSend(token, chatId, "Usage: /setflood <number/off/no>");
+      await replyAdmin("Usage: /setflood <number/off/no>");
       return;
     }
     cfg.flood.limit = n;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Antiflood set to ${n} messages.`);
+    await replyAdmin(`Antiflood set to ${n} messages.`);
     return;
   }
 
@@ -2204,55 +2236,55 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       cfg.flood.timerCount = 0;
       cfg.flood.timerSeconds = 0;
       await saveChatConfig(chatId, cfg);
-      await safeSend(token, chatId, "Timed antiflood disabled.");
+      await replyAdmin("Timed antiflood disabled.");
       return;
     }
     const count = parseInt(cmdArgs[0], 10);
     const secs = parseDurationSeconds(cmdArgs[1]);
     if (!count || !secs) {
-      await safeSend(token, chatId, "Usage: /setfloodtimer <count> <duration|off>");
+      await replyAdmin("Usage: /setfloodtimer <count> <duration|off>");
       return;
     }
     cfg.flood.timerCount = count;
     cfg.flood.timerSeconds = secs;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Timed antiflood set to ${count} msgs / ${secs}s.`);
+    await replyAdmin(`Timed antiflood set to ${count} msgs / ${secs}s.`);
     return;
   }
 
   if (cmd === "/floodmode") {
     const m = (cmdArgs[0] || "").toLowerCase();
     if (!PUNISHMENT_ACTIONS.has(m)) {
-      await safeSend(token, chatId, "Usage: /floodmode <ban/mute/kick/tban/tmute> [duration]");
+      await replyAdmin("Usage: /floodmode <ban/mute/kick/tban/tmute> [duration]");
       return;
     }
     const dur = cmdArgs[1] ? parseDurationSeconds(cmdArgs[1]) : 0;
     if (cmdArgs[1] && dur === null) {
-      await safeSend(token, chatId, "Invalid duration.");
+      await replyAdmin("Invalid duration.");
       return;
     }
     cfg.flood.action = m;
     cfg.flood.durationSeconds = dur || 0;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Flood mode set to ${m}${dur ? ` (${dur}s)` : ""}.`);
+    await replyAdmin(`Flood mode set to ${m}${dur ? ` (${dur}s)` : ""}.`);
     return;
   }
 
   if (cmd === "/clearflood") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /clearflood <yes/no/on/off>");
+      await replyAdmin("Usage: /clearflood <yes/no/on/off>");
       return;
     }
     cfg.flood.clearFlood = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Clear flood set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Clear flood set to ${flag ? "on" : "off"}.`);
     return;
   }
 
   if (cmd === "/addblocklist") {
     if (!cmdArgsStr) {
-      await safeSend(token, chatId, "Usage: /addblocklist <trigger> [reason]");
+      await replyAdmin("Usage: /addblocklist <trigger> [reason]");
       return;
     }
     const qMatch = cmdArgsStr.match(/^("[^"]+")(?:\s+([\s\S]*))?$/);
@@ -2261,18 +2293,18 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     cfg.blocklists = cfg.blocklists.filter((b) => b.trigger !== trigger);
     cfg.blocklists.push({ trigger, reason });
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Added blocklist trigger: ${trigger}`);
+    await replyAdmin(`Added blocklist trigger: ${trigger}`);
     return;
   }
 
   if (cmd === "/rmblocklist") {
     if (!cmdArgsStr) {
-      await safeSend(token, chatId, "Usage: /rmblocklist <trigger>");
+      await replyAdmin("Usage: /rmblocklist <trigger>");
       return;
     }
     cfg.blocklists = cfg.blocklists.filter((b) => b.trigger !== cmdArgsStr);
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Removed blocklist trigger: ${cmdArgsStr}`);
+    await replyAdmin(`Removed blocklist trigger: ${cmdArgsStr}`);
     return;
   }
 
@@ -2280,62 +2312,62 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const admins = await getChatAdminsCached(token, chatId);
     const creator = admins.find((a) => a.status === "creator");
     if (creator?.user?.id !== senderId) {
-      await safeSend(token, chatId, "Only the group creator can clear all blocklists.");
+      await replyAdmin("Only the group creator can clear all blocklists.");
       return;
     }
     cfg.blocklists = [];
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "Cleared all blocklists.");
+    await replyAdmin("Cleared all blocklists.");
     return;
   }
 
   if (cmd === "/blocklistmode") {
     const m = (cmdArgs[0] || "").toLowerCase();
     if (!BLOCKLIST_ACTIONS.has(m)) {
-      await safeSend(token, chatId, "Usage: /blocklistmode <nothing/ban/mute/kick/warn/tban/tmute>");
+      await replyAdmin("Usage: /blocklistmode <nothing/ban/mute/kick/warn/tban/tmute>");
       return;
     }
     cfg.blocklistMode = m;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Blocklist mode set to ${m}.`);
+    await replyAdmin(`Blocklist mode set to ${m}.`);
     return;
   }
 
   if (cmd === "/blocklistdelete") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /blocklistdelete <yes/no/on/off>");
+      await replyAdmin("Usage: /blocklistdelete <yes/no/on/off>");
       return;
     }
     cfg.blocklistDelete = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Blocklist message deletion set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Blocklist message deletion set to ${flag ? "on" : "off"}.`);
     return;
   }
 
   if (cmd === "/setblocklistreason") {
     cfg.blocklistReason = cmdArgsStr;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "Default blocklist reason updated.");
+    await replyAdmin("Default blocklist reason updated.");
     return;
   }
 
   if (cmd === "/resetblocklistreason") {
     cfg.blocklistReason = "";
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "Default blocklist reason reset.");
+    await replyAdmin("Default blocklist reason reset.");
     return;
   }
 
   if (cmd === "/cleancommand") {
     const valid = cmdArgs.map((t) => t.toLowerCase()).filter((t) => CLEAN_CMD_TYPES.has(t));
     if (!valid.length) {
-      await safeSend(token, chatId, "Usage: /cleancommand <all/admin/user/other>");
+      await replyAdmin("Usage: /cleancommand <all/admin/user/other>");
       return;
     }
     cfg.cleanCommands = Array.from(new Set([...cfg.cleanCommands, ...valid]));
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Clean command types: ${cfg.cleanCommands.join(", ")}`);
+    await replyAdmin(`Clean command types: ${cfg.cleanCommands.join(", ")}`);
     return;
   }
 
@@ -2343,19 +2375,19 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const toRemove = cmdArgs.map((t) => t.toLowerCase());
     cfg.cleanCommands = cfg.cleanCommands.filter((t) => !toRemove.includes(t));
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Active clean command types: ${cfg.cleanCommands.join(", ") || "none"}`);
+    await replyAdmin(`Active clean command types: ${cfg.cleanCommands.join(", ") || "none"}`);
     return;
   }
 
   if (cmd === "/lockwarns") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /lockwarns <yes/no/on/off>");
+      await replyAdmin("Usage: /lockwarns <yes/no/on/off>");
       return;
     }
     cfg.lockWarns = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Lock warnings set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Lock warnings set to ${flag ? "on" : "off"}.`);
     return;
   }
 
@@ -2363,7 +2395,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const [leftPart, rightPart] = cmdArgsStr.split("###");
     const items = (leftPart || "").trim().split(/\s+/).map((s) => s.toLowerCase()).filter(Boolean);
     if (!items.length) {
-      await safeSend(token, chatId, "Usage: /lock <item(s)> [### reason {action}]");
+      await replyAdmin("Usage: /lock <item(s)> [### reason {action}]");
       return;
     }
 
@@ -2375,42 +2407,46 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
           else delete cfg.lockConfig[it];
         }
         await saveChatConfig(chatId, cfg);
-        await safeSend(token, chatId, "Reset custom lock action/reason.");
+        await replyAdmin("Reset custom lock action/reason.");
         return;
       }
       const actMatch = trimmedRight.match(/\{(ban|mute|kick|tban|tmute|warn)\}/i);
       const action = actMatch ? actMatch[1].toLowerCase() : null;
       const reason = trimmedRight.replace(/\{[^}]+\}/g, "").trim();
-      for (const it of items) {
-        if (!LOCK_TYPES.includes(it)) continue;
+      const validCustom = items.filter((it) => LOCK_TYPES.includes(it));
+      if (!validCustom.length) {
+        await replyAdmin(`Unknown lock type(s): ${items.join(", ")}`);
+        return;
+      }
+      for (const it of validCustom) {
         cfg.locks[it] = true;
         cfg.lockConfig[it] = { action, reason, durationSeconds: 0 };
       }
       await saveChatConfig(chatId, cfg);
-      await safeSend(token, chatId, `Locked ${items.join(", ")} with custom action/reason.`);
+      await replyAdmin(`Locked ${validCustom.join(", ")} with custom action/reason.`);
       return;
     }
 
     const invalid = items.filter((i) => !LOCK_TYPES.includes(i));
     if (invalid.length) {
-      await safeSend(token, chatId, `Unknown lock type(s): ${invalid.join(", ")}`);
+      await replyAdmin(`Unknown lock type(s): ${invalid.join(", ")}`);
       return;
     }
     for (const it of items) cfg.locks[it] = true;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Locked: ${items.join(", ")}`);
+    await replyAdmin(`Locked: ${items.join(", ")}`);
     return;
   }
 
   if (cmd === "/unlock") {
     const items = cmdArgs.map((s) => s.toLowerCase());
     if (!items.length) {
-      await safeSend(token, chatId, "Usage: /unlock <item(s)>");
+      await replyAdmin("Usage: /unlock <item(s)>");
       return;
     }
     for (const it of items) delete cfg.locks[it];
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Unlocked: ${items.join(", ")}`);
+    await replyAdmin(`Unlocked: ${items.join(", ")}`);
     return;
   }
 
@@ -2419,9 +2455,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       .filter((e) => e.type === "custom_emoji")
       .map((e) => e.custom_emoji_id);
     if (!cmdArgs.length && !replyEmojis.length) {
-      await safeSend(
-        token,
-        chatId,
+      await replyAdmin(
         cfg.allowlist.length ? `Allowlist:\n${cfg.allowlist.join("\n")}` : "Allowlist is empty."
       );
       return;
@@ -2434,21 +2468,21 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       }
     }
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "Allowlist updated.");
+    await replyAdmin("Allowlist updated.");
     return;
   }
 
   if (cmd === "/rmallowlist") {
     cfg.allowlist = cfg.allowlist.filter((it) => !cmdArgs.includes(it));
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "Removed specified items from allowlist.");
+    await replyAdmin("Removed specified items from allowlist.");
     return;
   }
 
   if (cmd === "/rmallowlistall") {
     cfg.allowlist = [];
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "Cleared all allowlisted items.");
+    await replyAdmin("Cleared all allowlisted items.");
     return;
   }
 
@@ -2466,7 +2500,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const finalContent = content.trim() || (!pickedMedia ? replyCaption : "");
 
     if (!triggers.length || (!finalContent && !pickedMedia)) {
-      await safeSend(token, chatId, "Usage: /filter <trigger> <reply text> (or reply to media/text with /filter <trigger>)");
+      await replyAdmin("Usage: /filter <trigger> <reply text> (or reply to media/text with /filter <trigger>)");
       return;
     }
     const filters = (await storeGet(`filters_v2:${chatId}`)) || [];
@@ -2477,23 +2511,19 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       else filters.push(entry);
     }
     await storeSet(`filters_v2:${chatId}`, filters);
-    await safeSend(
-      token,
-      chatId,
-      `Filter saved: ${triggers.join(", ")}${pickedMedia ? ` [${pickedMedia.type}]` : ""}`
-    );
+    await replyAdmin(`Filter saved: ${triggers.join(", ")}${pickedMedia ? ` [${pickedMedia.type}]` : ""}`);
     return;
   }
 
   if (cmd === "/stop") {
     if (!cmdArgsStr) {
-      await safeSend(token, chatId, "Usage: /stop <trigger>");
+      await replyAdmin("Usage: /stop <trigger>");
       return;
     }
     const filters = (await storeGet(`filters_v2:${chatId}`)) || [];
     const next = filters.filter((f) => f.trigger !== cmdArgsStr);
     await storeSet(`filters_v2:${chatId}`, next);
-    await safeSend(token, chatId, `Filter removed: ${cmdArgsStr}`);
+    await replyAdmin(`Filter removed: ${cmdArgsStr}`);
     return;
   }
 
@@ -2510,7 +2540,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
           : "";
 
     if (!match) {
-      await safeSend(token, chatId, "Usage: /save <note_name> [content] (or reply to media/text)");
+      await replyAdmin("Usage: /save <note_name> [content] (or reply to media/text)");
       return;
     }
     const noteName = match[1].trim().toLowerCase();
@@ -2518,7 +2548,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const finalContent = inlineContent || (!pickedMedia ? replyCaption : "");
 
     if (!finalContent && !pickedMedia) {
-      await safeSend(token, chatId, "Usage: /save <note_name> [content] (or reply to media/text)");
+      await replyAdmin("Usage: /save <note_name> [content] (or reply to media/text)");
       return;
     }
 
@@ -2527,24 +2557,20 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       ? { content: finalContent, media: pickedMedia }
       : finalContent;
     await storeSet(`notes:${chatId}`, notes);
-    await safeSend(
-      token,
-      chatId,
-      `Note saved as #${noteName}${pickedMedia ? ` [${pickedMedia.type}]` : ""}`
-    );
+    await replyAdmin(`Note saved as #${noteName}${pickedMedia ? ` [${pickedMedia.type}]` : ""}`);
     return;
   }
 
   if (cmd === "/clear") {
     const noteName = (cmdArgs[0] || "").trim().toLowerCase();
     if (!noteName) {
-      await safeSend(token, chatId, "Usage: /clear <note_name>");
+      await replyAdmin("Usage: /clear <note_name>");
       return;
     }
     const notes = (await storeGet(`notes:${chatId}`)) || {};
     delete notes[noteName];
     await storeSet(`notes:${chatId}`, notes);
-    await safeSend(token, chatId, `Note #${noteName} deleted.`);
+    await replyAdmin(`Note #${noteName} deleted.`);
     return;
   }
 
@@ -2552,17 +2578,17 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     if ((cmdArgs[0] || "").toLowerCase() === "noformat") {
       const raw = cfg.greetings.welcomeText || "";
       const mediaTag = cfg.greetings.welcomeMedia ? `\n[Media: ${cfg.greetings.welcomeMedia.type}]` : "";
-      await safeSend(token, chatId, `${raw}${mediaTag}` || "No welcome message set.");
+      await replyAdmin(`${raw}${mediaTag}` || "No welcome message set.");
       return;
     }
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /welcome <yes/no/on/off|noformat>");
+      await replyAdmin("Usage: /welcome <yes/no/on/off|noformat>");
       return;
     }
     cfg.greetings.welcomeEnabled = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Welcome messages ${flag ? "enabled" : "disabled"}.`);
+    await replyAdmin(`Welcome messages ${flag ? "enabled" : "disabled"}.`);
     return;
   }
 
@@ -2570,29 +2596,29 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     if ((cmdArgs[0] || "").toLowerCase() === "noformat") {
       const raw = cfg.greetings.goodbyeText || "";
       const mediaTag = cfg.greetings.goodbyeMedia ? `\n[Media: ${cfg.greetings.goodbyeMedia.type}]` : "";
-      await safeSend(token, chatId, `${raw}${mediaTag}` || "No goodbye message set.");
+      await replyAdmin(`${raw}${mediaTag}` || "No goodbye message set.");
       return;
     }
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /goodbye <yes/no/on/off|noformat>");
+      await replyAdmin("Usage: /goodbye <yes/no/on/off|noformat>");
       return;
     }
     cfg.greetings.goodbyeEnabled = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Goodbye messages ${flag ? "enabled" : "disabled"}.`);
+    await replyAdmin(`Goodbye messages ${flag ? "enabled" : "disabled"}.`);
     return;
   }
 
   if (cmd === "/cleanwelcome") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /cleanwelcome <yes/no/on/off>");
+      await replyAdmin("Usage: /cleanwelcome <yes/no/on/off>");
       return;
     }
     cfg.greetings.cleanWelcome = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Clean welcome set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Clean welcome set to ${flag ? "on" : "off"}.`);
     return;
   }
 
@@ -2610,7 +2636,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const nextText = cmdArgsStr || replyCaption || (pickedMedia ? "" : null);
 
     if (nextText === null && !pickedMedia) {
-      await safeSend(token, chatId, `Usage: ${cmd} <text> (or reply to a photo/GIF/video/sticker with ${cmd})`);
+      await replyAdmin(`Usage: ${cmd} <text> (or reply to a photo/GIF/video/sticker with ${cmd})`);
       return;
     }
 
@@ -2627,9 +2653,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
 
     await saveChatConfig(chatId, cfg);
-    await safeSend(
-      token,
-      chatId,
+    await replyAdmin(
       `${isWel ? "Welcome" : "Goodbye"} message updated and enabled${pickedMedia ? ` with ${pickedMedia.type}` : ""}.`
     );
     return;
@@ -2645,19 +2669,19 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       cfg.greetings.goodbyeMedia = null;
     }
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `${cmd === "/resetwelcome" ? "Welcome" : "Goodbye"} message reset.`);
+    await replyAdmin(`${cmd === "/resetwelcome" ? "Welcome" : "Goodbye"} message reset.`);
     return;
   }
 
   if (cmd === "/pin") {
     const right = await checkBotPermission(token, chatId, "can_pin_messages");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
     const targetMsgId = message.reply_to_message?.message_id;
     if (!targetMsgId) {
-      await safeSend(token, chatId, "Reply to the message you want to pin with /pin.");
+      await replyAdmin("Reply to user or mention Telegram unique ID.");
       return;
     }
     const silent = !cmdArgs.some((a) => ["loud", "notify"].includes(a.toLowerCase()));
@@ -2667,9 +2691,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         message_id: targetMsgId,
         disable_notification: silent,
       });
-      await safeSend(token, chatId, "Message pinned.");
+      await replyAdmin("Message pinned.");
     } catch (err) {
-      await safeSend(token, chatId, `Pin failed: ${err.message}`);
+      await replyAdmin(`Pin failed: ${err.message}`);
     }
     return;
   }
@@ -2677,11 +2701,11 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/permapin") {
     const right = await checkBotPermission(token, chatId, "can_pin_messages");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
     if (!cmdArgsStr) {
-      await safeSend(token, chatId, "Usage: /permapin <text>");
+      await replyAdmin("Usage: /permapin <text>");
       return;
     }
     const filled = applyFillings(cmdArgsStr, message.from, message.chat, { rulesButton: cfg.rules.buttonText });
@@ -2700,7 +2724,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         });
       }
     } catch (err) {
-      await safeSend(token, chatId, `Permapin failed: ${err.message}`);
+      await replyAdmin(`Permapin failed: ${err.message}`);
     }
     return;
   }
@@ -2708,7 +2732,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/unpin") {
     const right = await checkBotPermission(token, chatId, "can_pin_messages");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
     const targetMsgId = message.reply_to_message?.message_id;
@@ -2718,9 +2742,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         "unpinChatMessage",
         targetMsgId ? { chat_id: chatId, message_id: targetMsgId } : { chat_id: chatId }
       );
-      await safeSend(token, chatId, "Message unpinned.");
+      await replyAdmin("Message unpinned.");
     } catch (err) {
-      await safeSend(token, chatId, `Unpin failed: ${err.message}`);
+      await replyAdmin(`Unpin failed: ${err.message}`);
     }
     return;
   }
@@ -2728,79 +2752,79 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/unpinall") {
     const right = await checkBotPermission(token, chatId, "can_pin_messages");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
     try {
       await tgApi(token, "unpinAllChatMessages", { chat_id: chatId });
-      await safeSend(token, chatId, "Unpinned all messages.");
+      await replyAdmin("Unpinned all messages.");
     } catch (err) {
-      await safeSend(token, chatId, `Unpinall failed: ${err.message}`);
+      await replyAdmin(`Unpinall failed: ${err.message}`);
     }
     return;
   }
 
   if (cmd === "/antichannelpin") {
     if (!cmdArgs[0]) {
-      await safeSend(token, chatId, `Anti-channel pin is ${cfg.pin.antiChannelPin ? "on" : "off"}.`);
+      await replyAdmin(`Anti-channel pin is ${cfg.pin.antiChannelPin ? "on" : "off"}.`);
       return;
     }
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /antichannelpin <yes/no/on/off>");
+      await replyAdmin("Usage: /antichannelpin <yes/no/on/off>");
       return;
     }
     cfg.pin.antiChannelPin = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Anti-channel pin set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Anti-channel pin set to ${flag ? "on" : "off"}.`);
     return;
   }
 
   if (cmd === "/cleanlinked") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /cleanlinked <yes/no/on/off>");
+      await replyAdmin("Usage: /cleanlinked <yes/no/on/off>");
       return;
     }
     cfg.pin.cleanLinked = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Clean linked channel set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Clean linked channel set to ${flag ? "on" : "off"}.`);
     return;
   }
 
   if (cmd === "/del") {
     const right = await checkBotPermission(token, chatId, "can_delete_messages");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
     if (message.reply_to_message) {
       await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
     }
-    await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+    await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
     return;
   }
 
   if (cmd === "/purgefrom") {
     if (!message.reply_to_message) {
-      await safeSend(token, chatId, "Reply to a message with /purgefrom.");
+      await replyAdmin("Reply to user or mention Telegram unique ID.");
       return;
     }
     purgeFromState.set(chatId, message.reply_to_message.message_id);
-    await safeSend(token, chatId, `Marked message ${message.reply_to_message.message_id} as purge start.`);
+    await replyAdmin(`Marked message ${message.reply_to_message.message_id} as purge start.`);
     return;
   }
 
   if (cmd === "/purgeto") {
     const right = await checkBotPermission(token, chatId, "can_delete_messages");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
     const startId = purgeFromState.get(chatId);
-    const endId = message.reply_to_message?.message_id || message.message_id;
+    const endId = message.reply_to_message?.message_id || adminMsgId;
     if (!startId) {
-      await safeSend(token, chatId, "Use /purgefrom first.");
+      await replyAdmin("Use /purgefrom first.");
       return;
     }
     const from = Math.min(startId, endId);
@@ -2809,27 +2833,27 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     for (let id = from; id <= Math.min(to, from + 100); id++) ids.push(id);
     if (ids.length) await safeTgApi(token, "deleteMessages", { chat_id: chatId, message_ids: ids });
     purgeFromState.delete(chatId);
-    await safeSend(token, chatId, `Purged ${ids.length} messages.`);
+    await replyAdmin(`Purged ${ids.length} messages.`);
     return;
   }
 
   if (cmd === "/purge" || cmd === "/spurge") {
     const right = await checkBotPermission(token, chatId, "can_delete_messages");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
     if (!message.reply_to_message) {
-      await safeSend(token, chatId, "Reply to a message to purge from.");
+      await replyAdmin("Reply to user or mention Telegram unique ID.");
       return;
     }
     const startId = message.reply_to_message.message_id;
     const countArg = parseInt(cmdArgs[0], 10);
-    const endId = countArg && countArg > 0 ? startId + countArg : message.message_id;
+    const endId = countArg && countArg > 0 ? startId + countArg : adminMsgId;
     const ids = [];
     for (let id = startId; id <= Math.min(endId, startId + 100); id++) ids.push(id);
     if (ids.length) await safeTgApi(token, "deleteMessages", { chat_id: chatId, message_ids: ids });
-    await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+    await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
     if (cmd === "/purge") {
       await safeSend(token, chatId, `Purged ${ids.length} messages.`);
     }
@@ -2838,130 +2862,123 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
 
   if (cmd === "/setrules") {
     if (!cmdArgsStr) {
-      await safeSend(token, chatId, "Usage: /setrules <text>");
+      await replyAdmin("Usage: /setrules <text>");
       return;
     }
     cfg.rules.text = cmdArgsStr;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "Chat rules updated.");
+    await replyAdmin("Chat rules updated.");
     return;
   }
 
   if (cmd === "/privaterules") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await safeSend(token, chatId, "Usage: /privaterules <yes/no/on/off>");
+      await replyAdmin("Usage: /privaterules <yes/no/on/off>");
       return;
     }
     cfg.rules.privateRules = flag;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Private rules set to ${flag ? "on" : "off"}.`);
+    await replyAdmin(`Private rules set to ${flag ? "on" : "off"}.`);
     return;
   }
 
   if (cmd === "/resetrules") {
     cfg.rules.text = "";
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "Chat rules reset.");
+    await replyAdmin("Chat rules reset.");
     return;
   }
 
   if (cmd === "/setrulesbutton") {
     if (!cmdArgsStr) {
-      await safeSend(token, chatId, "Usage: /setrulesbutton <label>");
+      await replyAdmin("Usage: /setrulesbutton <label>");
       return;
     }
     cfg.rules.buttonText = cmdArgsStr;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Rules button set to "${cmdArgsStr}".`);
+    await replyAdmin(`Rules button set to "${cmdArgsStr}".`);
     return;
   }
 
   if (cmd === "/resetrulesbutton") {
     cfg.rules.buttonText = "Rules";
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "Rules button reset to default.");
+    await replyAdmin("Rules button reset to default.");
     return;
   }
 
   if (cmd === "/warnmode") {
     const m = (cmdArgs[0] || "").toLowerCase();
     if (!PUNISHMENT_ACTIONS.has(m)) {
-      await safeSend(token, chatId, "Usage: /warnmode <ban/mute/kick/tban/tmute> [duration]");
+      await replyAdmin("Usage: /warnmode <ban/mute/kick/tban/tmute> [duration]");
       return;
     }
     const dur = cmdArgs[1] ? parseDurationSeconds(cmdArgs[1]) : 0;
     if (cmdArgs[1] && dur === null) {
-      await safeSend(token, chatId, "Invalid duration.");
+      await replyAdmin("Invalid duration.");
       return;
     }
     cfg.warnings.mode = m;
     cfg.warnings.durationSeconds = dur || 0;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Warn mode set to ${m}.`);
+    await replyAdmin(`Warn mode set to ${m}.`);
     return;
   }
 
   if (cmd === "/warnlimit") {
     const n = parseInt(cmdArgs[0], 10);
     if (!n || n < 1) {
-      await safeSend(token, chatId, "Usage: /warnlimit <number>");
+      await replyAdmin("Usage: /warnlimit <number>");
       return;
     }
     cfg.warnings.limit = n;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `Warn limit set to ${n}.`);
+    await replyAdmin(`Warn limit set to ${n}.`);
     return;
   }
 
   if (cmd === "/warntime") {
     const secs = parseDurationSeconds(cmdArgs[0]);
     if (secs === null) {
-      await safeSend(token, chatId, "Usage: /warntime <time|off>");
+      await replyAdmin("Usage: /warntime <time|off>");
       return;
     }
     cfg.warnings.timeSeconds = secs;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, secs === 0 ? "Warn expiration disabled." : `Warn expiration set to ${secs}s.`);
+    await replyAdmin(secs === 0 ? "Warn expiration disabled." : `Warn expiration set to ${secs}s.`);
     return;
   }
 
   if (cmd === "/resetallwarns") {
     cfg.warnings.clearedAt = Date.now();
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, "All warnings cleared.");
+    await replyAdmin("All warnings cleared.");
     return;
   }
 
   const needsRestrictRight = new Set([
     "/ban", "/dban", "/sban", "/tban", "/unban",
     "/mute", "/dmute", "/smute", "/tmute", "/unmute",
-    "/kick", "/dkick", "/skick",
-    "/warn", "/dwarn", "/swarn"
+    "/kick", "/dkick", "/skick"
   ]);
 
   if (needsRestrictRight.has(cmd)) {
     const right = await checkBotPermission(token, chatId, "can_restrict_members");
     if (!right.ok) {
-      await safeSend(token, chatId, right.message);
+      await replyAdmin(right.message);
       return;
     }
   }
 
   const target = await resolveTargetUser(token, message, parts);
   if (!target.id) {
-    await safeSend(
-      token,
-      chatId,
-      `Specify a target by replying to a message or using ${cmd} @username / ${cmd} <user_id>.`
-    );
+    await replyAdmin("Reply to user or mention Telegram unique ID.");
     return;
   }
 
   if (await isChatAdmin(token, chatId, target.id)) {
-    await safeSend(
-      token,
-      chatId,
+    await replyAdmin(
       `${target.label} is an administrator; I cannot perform ${cmd} on an admin.`
     );
     return;
@@ -2980,19 +2997,19 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
       }
       if (cmd === "/sban") {
-        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
       }
 
       const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tban" : "ban", durSec || 0, reason, logChatId);
       if (cmd !== "/sban") {
-        await safeSend(token, chatId, resText);
+        await replyAdmin(resText);
       }
       return;
     }
 
     if (cmd === "/unban") {
       await tgApi(token, "unbanChatMember", { chat_id: chatId, user_id: target.id, only_if_banned: true });
-      await safeSend(token, chatId, `${target.label} unbanned.`);
+      await replyAdmin(`I've unbanned ${target.label}.`);
       return;
     }
 
@@ -3002,11 +3019,11 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
       }
       if (cmd === "/skick") {
-        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
       }
       const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, "kick", 0, reason, logChatId);
       if (cmd !== "/skick") {
-        await safeSend(token, chatId, resText);
+        await replyAdmin(resText);
       }
       return;
     }
@@ -3024,12 +3041,12 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
       }
       if (cmd === "/smute") {
-        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
+        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
       }
 
       const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tmute" : "mute", durSec || 0, reason, logChatId);
       if (cmd !== "/smute") {
-        await safeSend(token, chatId, resText);
+        await replyAdmin(resText);
       }
       return;
     }
@@ -3051,7 +3068,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
           can_add_web_page_previews: true,
         },
       });
-      await safeSend(token, chatId, `${target.label} unmuted.`);
+      await replyAdmin(`I've unmuted ${target.label}.`);
       return;
     }
 
@@ -3063,41 +3080,46 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
 
     if (["/warn", "/dwarn", "/swarn"].includes(cmd)) {
       const reason = target.args.join(" ") || "Warning";
+      const isSilent = cmd === "/swarn";
       if (cmd === "/dwarn" && message.reply_to_message) {
         await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.reply_to_message.message_id });
       }
-      if (cmd === "/swarn") {
-        await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
-        await applyWarning(token, chatId, target.user || { id: target.id, username: target.label }, reason, cfg, null, logChatId);
-      } else {
-        await applyWarning(token, chatId, target.user || { id: target.id, username: target.label }, reason, cfg, message.message_id, logChatId);
-      }
+      await applyWarning(
+        token,
+        chatId,
+        target.user || { id: target.id, username: target.label },
+        reason,
+        cfg,
+        isSilent ? null : adminMsgId,
+        logChatId,
+        isSilent
+      );
       return;
     }
 
     if (cmd === "/warns") {
       if (!warns.length) {
-        await safeSend(token, chatId, `${target.label} has no warnings.`);
+        await replyAdmin(`${target.label} has no warnings.`);
         return;
       }
       const list = warns.map((w, idx) => `${idx + 1}. ${w.reason}`).join("\n");
-      await safeSend(token, chatId, `Warnings for ${target.label} (${warns.length}/${cfg.warnings.limit}):\n${list}`);
+      await replyAdmin(`Warnings for ${target.label} (${warns.length}/${cfg.warnings.limit}):\n${list}`);
       return;
     }
 
     if (cmd === "/rmwarn") {
       warns.pop();
       await storeSet(warnKey, warns);
-      await safeSend(token, chatId, `Latest warning removed (${warns.length}/${cfg.warnings.limit}).`);
+      await replyAdmin(`Latest warning removed (${warns.length}/${cfg.warnings.limit}).`);
       return;
     }
 
     if (cmd === "/resetwarn") {
       await storeSet(warnKey, []);
-      await safeSend(token, chatId, `All warnings cleared for ${target.label}.`);
+      await replyAdmin(`All warnings cleared for ${target.label}.`);
     }
   } catch (err) {
-    await safeSend(token, chatId, `Action failed: ${err.message}`);
+    await replyAdmin(`Action failed: ${err.message}`);
   }
 }
 
@@ -3112,6 +3134,18 @@ async function resolveTargetUser(token, message, parts) {
     };
   }
 
+  const entities = message.entities || [];
+  const textMention = entities.find((e) => e.type === "text_mention" && e.user?.id);
+  if (textMention?.user?.id) {
+    const u = textMention.user;
+    return {
+      id: u.id,
+      label: u.username ? `@${u.username}` : `${u.id}`,
+      user: u,
+      args: parts.slice(2),
+    };
+  }
+
   const firstArg = (parts[1] || "").trim();
   if (/^\d+$/.test(firstArg)) {
     const id = Number(firstArg);
@@ -3119,16 +3153,20 @@ async function resolveTargetUser(token, message, parts) {
   }
 
   if (/^@[a-zA-Z0-9_]{3,}$/.test(firstArg)) {
-    const cachedUser = await storeGet(`user:${firstArg.slice(1).toLowerCase()}`);
+    const cleanUname = firstArg.slice(1).toLowerCase();
+    const cachedUser = await storeGet(`user:${cleanUname}`);
     if (cachedUser?.id) {
       return { id: cachedUser.id, label: firstArg, user: cachedUser, args: parts.slice(2) };
     }
     try {
       const chatRes = await tgApi(token, "getChat", { chat_id: firstArg });
       if (chatRes?.result?.id) {
-        return { id: chatRes.result.id, label: firstArg, user: chatRes.result, args: parts.slice(2) };
+        const u = chatRes.result;
+        await storeSet(`user:${cleanUname}`, u);
+        return { id: u.id, label: firstArg, user: u, args: parts.slice(2) };
       }
     } catch {}
+    return { id: null, label: firstArg, user: null, args: parts.slice(2) };
   }
 
   return { id: null, label: "", user: null, args: parts.slice(1) };
@@ -3239,3 +3277,4 @@ async function tgApi(token, method, body) {
   }
   return data;
 }
+
