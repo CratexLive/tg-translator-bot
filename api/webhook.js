@@ -148,20 +148,20 @@ const HELP_CATEGORIES = {
   "cc:c:locks": {
     title: "Locks & Allowlist",
     body: [
-      "<b>Content Locks &amp; Allowlist (52 Types)</b>",
+      "<b>Content Locks &amp; Allowlist (51 Types)</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
       "• /lock &lt;type(s)&gt; [### reason {action}] — Lock types or apply custom rule.",
       "• /unlock &lt;type(s)&gt; — Unlock specified content types.",
       "• /locks [list] — View active locks or full lock summary.",
-      "• /locktypes — View all supported lock types.",
+      "• /locktypes — View all 51 supported lock types.",
       "• /lockwarns &lt;yes/no/on/off&gt; — Warn on locked content.",
       "• /allowlist [item|emojipack:&lt;&gt;] — Add or view allowlisted items.",
       "• /rmallowlist &lt;item&gt; — Remove item from allowlist.",
       "• /rmallowlistall — Clear allowlist.",
       "",
       "<b>Examples:</b>",
-      "• /lock audio voice sticker photo gif video",
+      "• /lock sticker photo gif video",
       "• /lock url ### No external links {mute}",
       "• /allowlist @CricxCrate"
     ].join("\n")
@@ -324,13 +324,11 @@ const HELP_CATEGORIES = {
     ].join("\n")
   },
   "cc:c:raid_misc": {
-    title: "Raid, Polls & Tools",
+    title: "Raid, Night & Tools",
     body: [
-      "<b>Anti-Raid, Polls, Night/Slow Mode &amp; Tools</b>",
+      "<b>Anti-Raid, Night/Slow Mode &amp; Utilities</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
-      "• /poll &lt;Question&gt; | &lt;Option1&gt; | &lt;Option2&gt; [| Option3...] — Create a group poll.",
-      "• /stoppoll (reply to poll) — Stop an active poll sent by the bot.",
       "• /raidmode &lt;yes/no/on/off|time&gt; — Toggle or time-box raid protection.",
       "• /autoraid &lt;number|off&gt; — Auto-enable raid mode after N joins in 20s.",
       "• /raidactiontime &lt;time&gt; — Set default raid duration.",
@@ -342,10 +340,10 @@ const HELP_CATEGORIES = {
       "• /id, /info [@user|id|reply], /chatinfo — Info commands.",
       "",
       "<b>Examples:</b>",
-      "• /poll Who wins tonight? | Team A | Team B | Draw",
       "• /raidmode 10m",
       "• /slowmode 5s",
-      "• /setnightmode 23:00 06:00"
+      "• /setnightmode 23:00 06:00",
+      "• /report Spam"
     ].join("\n")
   }
 };
@@ -558,8 +556,8 @@ function buildStartIntro(botUsername = "") {
       "Engineered for high-traffic communities, match chats, and moderated groups with instant webhook execution and persistent Redis storage.",
       "",
       "• <b>Admin &amp; Access:</b> Promotions, custom ranks, admin cache, anonymous admin bypass &amp; user approvals",
-      "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 52 content locks, allowlists, antiflood &amp; wildcard blocklists",
-      "• <b>Smart Automation:</b> Media/text greetings, polls, pin tools, purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
+      "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 content locks, allowlists, antiflood &amp; wildcard blocklists",
+      "• <b>Smart Automation:</b> Media/text greetings, pin tools, purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
       "",
       "Select <b>Help</b> below to inspect every command category."
     ].join("\n"),
@@ -603,7 +601,7 @@ function buildHelpMenuKeyboard() {
         { text: "Rules", callback_data: "cc:c:rules" }
       ],
       [
-        { text: "Raid, Polls & Tools", callback_data: "cc:c:raid_misc" }
+        { text: "Raid, Night & Tools", callback_data: "cc:c:raid_misc" }
       ],
       [
         { text: "Overview", callback_data: "cc:intro" }
@@ -1058,11 +1056,7 @@ function detectLockMatches(msg) {
   const text = msg.text || msg.caption || "";
   const entities = msg.entities || msg.caption_entities || [];
 
-  if (msg.media_group_id) {
-    matches.add("album");
-    matches.add("slideshow");
-    matches.add("collage");
-  }
+  if (msg.media_group_id) matches.add("album");
   if (msg.sender_chat && msg.sender_chat.id === msg.chat.id) matches.add("anonchannel");
   if (msg.audio) matches.add("audio");
   if (msg.new_chat_members?.some((m) => m.is_bot)) matches.add("bot");
@@ -1087,11 +1081,11 @@ function detectLockMatches(msg) {
     matches.add("emoji");
   }
 
-  if (msg.forward_origin || msg.forward_from || msg.forward_from_chat) {
+  if (msg.forward_origin) {
     matches.add("forward");
-    const t = msg.forward_origin?.type;
-    if (t === "user" || t === "hidden_user" || msg.forward_from) matches.add("forwarduser");
-    else if (t === "channel" || t === "chat" || msg.forward_from_chat) matches.add("forwardchannel");
+    const t = msg.forward_origin.type;
+    if (t === "user" || t === "hidden_user") matches.add("forwarduser");
+    else if (t === "channel" || t === "chat") matches.add("forwardchannel");
   }
 
   if (text) {
@@ -1499,7 +1493,6 @@ async function handleMessage(message, token, logChatId = "") {
       "approve", "unapprove", "approved", "unapproveall",
       "setflood", "setfloodtimer", "floodmode", "clearflood",
       "raidmode", "autoraid", "raidactiontime", "slowmode", "nightmode", "setnightmode",
-      "poll", "stoppoll",
       "addblocklist", "rmblocklist", "unblocklistall", "blocklistmode",
       "blocklistdelete", "setblocklistreason", "resetblocklistreason",
       "cleancommand", "keepcommand",
@@ -1511,8 +1504,7 @@ async function handleMessage(message, token, logChatId = "") {
       "setrules", "privaterules", "resetrules", "setrulesbutton", "resetrulesbutton",
       "warn", "dwarn", "swarn", "rmwarn", "resetwarn", "resetallwarns",
       "warnmode", "warnlimit", "warntime",
-      "ban", "dban", "sban", "tban", "unban",
-      "mute", "dmute", "smute", "tmute", "unmute",
+      "ban", "dban", "sban", "tban", "unban", "mute", "dmute", "smute", "tmute", "unmute",
       "kick", "dkick", "skick"
     ]);
     const userKnownSet = new Set([
@@ -1546,14 +1538,7 @@ async function handleMessage(message, token, logChatId = "") {
       if (!cfg.locks[lType]) continue;
       if (allowlisted && ALLOWLISTABLE_LOCKS.has(lType)) continue;
 
-      const delRes = await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
-      if (!delRes?.ok) {
-        await safeSend(
-          token,
-          chatId,
-          `Locked (${lType}) triggered for ${sender.first_name}, but could not delete message (check bot delete permission).`
-        );
-      }
+      await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
       const lConf = cfg.lockConfig[lType];
       const action = lConf?.action || (cfg.lockWarns ? "warn" : null);
       if (action) {
@@ -1904,7 +1889,6 @@ async function handleMessage(message, token, logChatId = "") {
     "/approve", "/unapprove", "/approved", "/unapproveall",
     "/setflood", "/setfloodtimer", "/floodmode", "/clearflood",
     "/raidmode", "/autoraid", "/raidactiontime", "/slowmode", "/nightmode", "/setnightmode",
-    "/poll", "/stoppoll",
     "/addblocklist", "/rmblocklist", "/unblocklistall", "/blocklistmode",
     "/blocklistdelete", "/setblocklistreason", "/resetblocklistreason",
     "/cleancommand", "/keepcommand",
@@ -1955,55 +1939,6 @@ async function handleMessage(message, token, logChatId = "") {
 async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs, cmdArgsStr, cleanLine, logChatId = "") {
   const chatId = message.chat.id;
   const senderId = message.from?.id;
-
-  if (cmd === "/poll") {
-    const segments = cmdArgsStr
-      .split("|")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const question = (segments[0] || "").slice(0, 300);
-    const options = segments.slice(1, 11).map((o) => o.slice(0, 100));
-
-    if (!question || options.length < 2) {
-      await safeSend(
-        token,
-        chatId,
-        "Usage: /poll <Question> | <Option 1> | <Option 2> [| Option 3...]"
-      );
-      return;
-    }
-
-    try {
-      await tgApi(token, "sendPoll", {
-        chat_id: chatId,
-        question,
-        options,
-        is_anonymous: true,
-        allows_multiple_answers: false,
-      });
-    } catch (err) {
-      await safeSend(token, chatId, `Poll failed: ${err.message}`);
-    }
-    return;
-  }
-
-  if (cmd === "/stoppoll") {
-    const targetMsgId = message.reply_to_message?.message_id;
-    if (!targetMsgId) {
-      await safeSend(token, chatId, "Reply to a bot poll message with /stoppoll.");
-      return;
-    }
-    try {
-      await tgApi(token, "stopPoll", {
-        chat_id: chatId,
-        message_id: targetMsgId,
-      });
-      await safeSend(token, chatId, "Poll stopped.");
-    } catch (err) {
-      await safeSend(token, chatId, `Stop poll failed: ${err.message}`);
-    }
-    return;
-  }
 
   if (cmd === "/promote" || cmd === "/demote") {
     const right = await checkBotPermission(token, chatId, "can_promote_members");
@@ -2446,17 +2381,13 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       const actMatch = trimmedRight.match(/\{(ban|mute|kick|tban|tmute|warn)\}/i);
       const action = actMatch ? actMatch[1].toLowerCase() : null;
       const reason = trimmedRight.replace(/\{[^}]+\}/g, "").trim();
-      const validCustom = items.filter((it) => LOCK_TYPES.includes(it));
-      if (!validCustom.length) {
-        await safeSend(token, chatId, `Unknown lock type(s): ${items.join(", ")}`);
-        return;
-      }
-      for (const it of validCustom) {
+      for (const it of items) {
+        if (!LOCK_TYPES.includes(it)) continue;
         cfg.locks[it] = true;
         cfg.lockConfig[it] = { action, reason, durationSeconds: 0 };
       }
       await saveChatConfig(chatId, cfg);
-      await safeSend(token, chatId, `Locked ${validCustom.join(", ")} with custom action/reason.`);
+      await safeSend(token, chatId, `Locked ${items.join(", ")} with custom action/reason.`);
       return;
     }
 
