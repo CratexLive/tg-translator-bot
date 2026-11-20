@@ -173,15 +173,15 @@ const HELP_CATEGORIES = {
       "",
       "<b>Commands &amp; Usage:</b>",
       "• /flood — View current antiflood configuration.",
-      "• /setflood &lt;number/off&gt; — Trigger after N consecutive messages.",
-      "• /setfloodtimer &lt;count&gt; &lt;time|off&gt; — Trigger on N messages in time window.",
+      "• /setflood &lt;number/off&gt; — Trigger at N consecutive messages.",
+      "• /setfloodtimer &lt;count&gt; &lt;time|off&gt; — Trigger at N messages in time window.",
       "• /floodmode &lt;ban/mute/kick/tban/tmute&gt; [time] — Set flood action.",
       "• /clearflood &lt;yes/no/on/off&gt; — Delete flooding messages on trigger.",
       "",
       "<b>Examples:</b>",
-      "• /setflood 6",
+      "• /setflood 3",
       "• /setfloodtimer 8 10s",
-      "• /floodmode tmute 15m",
+      "• /floodmode ban",
       "• /clearflood on"
     ].join("\n")
   },
@@ -212,7 +212,7 @@ const HELP_CATEGORIES = {
       "<b>Auto-Reply Filters (Text &amp; Media)</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
-      "• /filter &lt;trigger&gt; [reply] — Save text, photo, GIF, video, sticker, audio, voice, or document (by reply or text).",
+      "• /filter &lt;trigger&gt; [reply] — Save text, photo, GIF, video, sticker, audio, voice, or document.",
       "• Supports exact:, prefix:, (a, b), %%% random variants, {admin}, {user}, {allow_bot}, {protect}, {replytag}, fillings &amp; buttons.",
       "• Append <code>force</code> (admins) or <code>noformat</code> when triggering.",
       "• /filters — List active filter triggers in chat.",
@@ -460,7 +460,7 @@ function getDefaultChatConfig() {
       limit: 0,
       timerCount: 0,
       timerSeconds: 0,
-      action: "mute",
+      action: "ban",
       durationSeconds: 0,
       clearFlood: false,
     },
@@ -1514,30 +1514,60 @@ async function handleMessage(message, token, logChatId = "") {
     if (cfg.flood.limit > 0 || cfg.flood.timerCount > 0) {
       const fKey = `${chatId}:${senderId}`;
       const now = Date.now();
-      const st = floodState.get(fKey) || { count: 0, ts: [] };
+      const storedSt = await storeGet(`flood:${fKey}`);
+      const memSt = floodState.get(fKey);
+      const st = storedSt && (!memSt || storedSt.count >= memSt.count)
+        ? storedSt
+        : memSt || { count: 0, ts: [] };
+
       st.count += 1;
-      st.ts.push(now);
+      st.ts = Array.isArray(st.ts) ? [...st.ts, now] : [now];
 
       let tripped = false;
-      if (cfg.flood.limit > 0 && st.count > cfg.flood.limit) tripped = true;
+      if (cfg.flood.limit > 0 && st.count >= cfg.flood.limit) tripped = true;
       if (!tripped && cfg.flood.timerCount > 0 && cfg.flood.timerSeconds > 0) {
         st.ts = st.ts.filter((t) => now - t <= cfg.flood.timerSeconds * 1000);
         if (st.ts.length >= cfg.flood.timerCount) tripped = true;
       }
+
       floodState.set(fKey, st);
+      await storeSet(`flood:${fKey}`, st);
 
       if (tripped) {
-        floodState.set(fKey, { count: 0, ts: [] });
+        const resetSt = { count: 0, ts: [] };
+        floodState.set(fKey, resetSt);
+        await storeSet(`flood:${fKey}`, resetSt);
+
         if (cfg.flood.clearFlood) {
           await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: message.message_id });
         }
-        const resText = await applyPunishment(token, chatId, sender, cfg.flood.action, cfg.flood.durationSeconds, "Antiflood triggered", logChatId);
-        await safeSend(token, chatId, resText);
+
+        const action = PUNISHMENT_ACTIONS.has(cfg.flood.action) ? cfg.flood.action : "ban";
+        try {
+          const resText = await applyPunishment(
+            token,
+            chatId,
+            sender,
+            action,
+            cfg.flood.durationSeconds || 0,
+            "Antiflood limit reached",
+            logChatId
+          );
+          await safeSend(token, chatId, resText);
+        } catch (err) {
+          await safeSend(
+            token,
+            chatId,
+            `Flood detected for ${sender?.first_name || senderId}, but ${action} failed: ${err.message}`
+          );
+        }
         return;
       }
     }
   } else if (senderId) {
-    floodState.set(`${chatId}:${senderId}`, { count: 0, ts: [] });
+    const resetSt = { count: 0, ts: [] };
+    floodState.set(`${chatId}:${senderId}`, resetSt);
+    await storeSet(`flood:${chatId}:${senderId}`, resetSt);
   }
 
   if (cmd === "/start") {
@@ -1811,16 +1841,14 @@ async function handleMessage(message, token, logChatId = "") {
     "/promote", "/demote", "/title", "/admincache", "/anonadmin", "/adminerror", "/reports",
     "/approve", "/unapprove", "/approved", "/unapproveall",
     "/setflood", "/setfloodtimer", "/floodmode", "/clearflood",
-    "/raidmode", "/autoraid", "/raidactiontime", "/slowmode", "/nightmode", "setnightmode",
-    "/setnightmode",
+    "/raidmode", "/autoraid", "/raidactiontime", "/slowmode", "/nightmode", "/setnightmode",
     "/addblocklist", "/rmblocklist", "/unblocklistall", "/blocklistmode",
     "/blocklistdelete", "/setblocklistreason", "/resetblocklistreason",
     "/cleancommand", "/keepcommand",
     "/lock", "/unlock", "/lockwarns", "/allowlist", "/rmallowlist", "/rmallowlistall",
     "/filter", "/stop", "/save", "/clear",
     "/welcome", "/goodbye", "/setwelcome", "/resetwelcome", "/setgoodbye", "/resetgoodbye", "/cleanwelcome",
-    "/pin", "/permapin", "/unpin", "/unpinall", "/antichannelpin", "cleanlinked",
-    "/cleanlinked",
+    "/pin", "/permapin", "/unpin", "/unpinall", "/antichannelpin", "/cleanlinked",
     "/purge", "/spurge", "/del", "/purgefrom", "/purgeto",
     "/setrules", "/privaterules", "/resetrules", "/setrulesbutton", "/resetrulesbutton",
     "/warn", "/dwarn", "/swarn", "/warns", "/rmwarn", "/resetwarn", "/resetallwarns",
