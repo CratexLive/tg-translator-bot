@@ -324,11 +324,13 @@ const HELP_CATEGORIES = {
     ].join("\n")
   },
   "cc:c:raid_misc": {
-    title: "Raid, Night & Tools",
+    title: "Raid, Polls & Tools",
     body: [
-      "<b>Anti-Raid, Night/Slow Mode &amp; Utilities</b>",
+      "<b>Anti-Raid, Polls, Night/Slow Mode &amp; Tools</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
+      "• /poll &lt;Question&gt; | &lt;Option1&gt; | &lt;Option2&gt; [| Option3...] — Create a group poll.",
+      "• /stoppoll (reply to poll) — Stop an active poll sent by the bot.",
       "• /raidmode &lt;yes/no/on/off|time&gt; — Toggle or time-box raid protection.",
       "• /autoraid &lt;number|off&gt; — Auto-enable raid mode after N joins in 20s.",
       "• /raidactiontime &lt;time&gt; — Set default raid duration.",
@@ -340,10 +342,10 @@ const HELP_CATEGORIES = {
       "• /id, /info [@user|id|reply], /chatinfo — Info commands.",
       "",
       "<b>Examples:</b>",
+      "• /poll Who wins tonight? | Team A | Team B | Draw",
       "• /raidmode 10m",
       "• /slowmode 5s",
-      "• /setnightmode 23:00 06:00",
-      "• /report Spam"
+      "• /setnightmode 23:00 06:00"
     ].join("\n")
   }
 };
@@ -557,7 +559,7 @@ function buildStartIntro(botUsername = "") {
       "",
       "• <b>Admin &amp; Access:</b> Promotions, custom ranks, admin cache, anonymous admin bypass &amp; user approvals",
       "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 content locks, allowlists, antiflood &amp; wildcard blocklists",
-      "• <b>Smart Automation:</b> Media/text greetings, pin tools, purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
+      "• <b>Smart Automation:</b> Media/text greetings, polls, pin tools, purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
       "",
       "Select <b>Help</b> below to inspect every command category."
     ].join("\n"),
@@ -601,7 +603,7 @@ function buildHelpMenuKeyboard() {
         { text: "Rules", callback_data: "cc:c:rules" }
       ],
       [
-        { text: "Raid, Night & Tools", callback_data: "cc:c:raid_misc" }
+        { text: "Raid, Polls & Tools", callback_data: "cc:c:raid_misc" }
       ],
       [
         { text: "Overview", callback_data: "cc:intro" }
@@ -1493,6 +1495,7 @@ async function handleMessage(message, token, logChatId = "") {
       "approve", "unapprove", "approved", "unapproveall",
       "setflood", "setfloodtimer", "floodmode", "clearflood",
       "raidmode", "autoraid", "raidactiontime", "slowmode", "nightmode", "setnightmode",
+      "poll", "stoppoll",
       "addblocklist", "rmblocklist", "unblocklistall", "blocklistmode",
       "blocklistdelete", "setblocklistreason", "resetblocklistreason",
       "cleancommand", "keepcommand",
@@ -1504,7 +1507,8 @@ async function handleMessage(message, token, logChatId = "") {
       "setrules", "privaterules", "resetrules", "setrulesbutton", "resetrulesbutton",
       "warn", "dwarn", "swarn", "rmwarn", "resetwarn", "resetallwarns",
       "warnmode", "warnlimit", "warntime",
-      "ban", "dban", "sban", "tban", "unban", "mute", "dmute", "smute", "tmute", "unmute",
+      "ban", "dban", "sban", "tban", "unban",
+      "mute", "dmute", "smute", "tmute", "unmute",
       "kick", "dkick", "skick"
     ]);
     const userKnownSet = new Set([
@@ -1889,6 +1893,7 @@ async function handleMessage(message, token, logChatId = "") {
     "/approve", "/unapprove", "/approved", "/unapproveall",
     "/setflood", "/setfloodtimer", "/floodmode", "/clearflood",
     "/raidmode", "/autoraid", "/raidactiontime", "/slowmode", "/nightmode", "/setnightmode",
+    "/poll", "/stoppoll",
     "/addblocklist", "/rmblocklist", "/unblocklistall", "/blocklistmode",
     "/blocklistdelete", "/setblocklistreason", "/resetblocklistreason",
     "/cleancommand", "/keepcommand",
@@ -1939,6 +1944,55 @@ async function handleMessage(message, token, logChatId = "") {
 async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs, cmdArgsStr, cleanLine, logChatId = "") {
   const chatId = message.chat.id;
   const senderId = message.from?.id;
+
+  if (cmd === "/poll") {
+    const segments = cmdArgsStr
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const question = (segments[0] || "").slice(0, 300);
+    const options = segments.slice(1, 11).map((o) => o.slice(0, 100));
+
+    if (!question || options.length < 2) {
+      await safeSend(
+        token,
+        chatId,
+        "Usage: /poll <Question> | <Option 1> | <Option 2> [| Option 3...]"
+      );
+      return;
+    }
+
+    try {
+      await tgApi(token, "sendPoll", {
+        chat_id: chatId,
+        question,
+        options,
+        is_anonymous: true,
+        allows_multiple_answers: false,
+      });
+    } catch (err) {
+      await safeSend(token, chatId, `Poll failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (cmd === "/stoppoll") {
+    const targetMsgId = message.reply_to_message?.message_id;
+    if (!targetMsgId) {
+      await safeSend(token, chatId, "Reply to a bot poll message with /stoppoll.");
+      return;
+    }
+    try {
+      await tgApi(token, "stopPoll", {
+        chat_id: chatId,
+        message_id: targetMsgId,
+      });
+      await safeSend(token, chatId, "Poll stopped.");
+    } catch (err) {
+      await safeSend(token, chatId, `Stop poll failed: ${err.message}`);
+    }
+    return;
+  }
 
   if (cmd === "/promote" || cmd === "/demote") {
     const right = await checkBotPermission(token, chatId, "can_promote_members");
@@ -3239,4 +3293,3 @@ async function tgApi(token, method, body) {
   }
   return data;
 }
-
