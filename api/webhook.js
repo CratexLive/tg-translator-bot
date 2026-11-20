@@ -4,7 +4,6 @@ const adminCache = new Map();
 const floodState = new Map();
 const purgeFromState = new Map();
 const raidJoinState = new Map();
-const mediaGroupIndex = new Map();
 
 const PUNISHMENT_ACTIONS = new Set(["ban", "mute", "kick", "tban", "tmute"]);
 const BLOCKLIST_ACTIONS = new Set(["nothing", "ban", "mute", "kick", "warn", "tban", "tmute"]);
@@ -327,10 +326,9 @@ const HELP_CATEGORIES = {
   "cc:c:raid_misc": {
     title: "Raid, Night & Tools",
     body: [
-      "<b>Anti-Raid, Slideshow, Night/Slow Mode &amp; Tools</b>",
+      "<b>Anti-Raid, Night/Slow Mode &amp; Utilities</b>",
       "",
       "<b>Commands &amp; Usage:</b>",
-      "• /slideshow [caption] — Reply to a photo/video/GIF album (5–10 items) to create a single-view button slider.",
       "• /raidmode &lt;yes/no/on/off|time&gt; — Toggle or time-box raid protection.",
       "• /autoraid &lt;number|off&gt; — Auto-enable raid mode after N joins in 20s.",
       "• /raidactiontime &lt;time&gt; — Set default raid duration.",
@@ -342,10 +340,10 @@ const HELP_CATEGORIES = {
       "• /id, /info [@user|id|reply], /chatinfo — Info commands.",
       "",
       "<b>Examples:</b>",
-      "• (reply to album) /slideshow Match Highlights",
       "• /raidmode 10m",
       "• /slowmode 5s",
-      "• /setnightmode 23:00 06:00"
+      "• /setnightmode 23:00 06:00",
+      "• /report Spam"
     ].join("\n")
   }
 };
@@ -403,7 +401,6 @@ export default async function handler(req, res) {
 
     const message = update.message || update.edited_message;
     if (message?.chat?.id) {
-      await recordAlbumMessage(message);
       await handleMessage(message, token, logChatId);
     }
 
@@ -412,142 +409,6 @@ export default async function handler(req, res) {
     console.error(`${BOT_NAME} top-level error:`, err);
     return res.status(200).json({ ok: true });
   }
-}
-
-function getSlideItemFromMessage(msg) {
-  if (!msg || typeof msg !== "object") return null;
-  if (Array.isArray(msg.photo) && msg.photo.length > 0) {
-    const best = msg.photo[msg.photo.length - 1];
-    if (best?.file_id) {
-      return {
-        type: "photo",
-        media: best.file_id,
-        message_id: msg.message_id,
-        caption: msg.caption || "",
-      };
-    }
-  }
-  if (msg.video?.file_id) {
-    return {
-      type: "video",
-      media: msg.video.file_id,
-      message_id: msg.message_id,
-      caption: msg.caption || "",
-    };
-  }
-  if (msg.animation?.file_id) {
-    return {
-      type: "animation",
-      media: msg.animation.file_id,
-      message_id: msg.message_id,
-      caption: msg.caption || "",
-    };
-  }
-  return null;
-}
-
-async function recordAlbumMessage(msg) {
-  const chatId = msg.chat?.id;
-  const item = getSlideItemFromMessage(msg);
-  if (!chatId || !item) return;
-
-  const msgKey = `slide_msg:${chatId}:${msg.message_id}`;
-  mediaGroupIndex.set(msgKey, item);
-  await storeSet(msgKey, item);
-
-  if (msg.media_group_id) {
-    const grpKey = `slide_grp:${chatId}:${msg.media_group_id}`;
-    const stored = (await storeGet(grpKey)) || [];
-    const mem = mediaGroupIndex.get(grpKey) || [];
-    const merged = [...stored];
-    for (const m of mem) {
-      if (!merged.some((x) => x.message_id === m.message_id)) merged.push(m);
-    }
-    if (!merged.some((x) => x.message_id === item.message_id)) {
-      merged.push(item);
-    }
-    merged.sort((a, b) => a.message_id - b.message_id);
-    const trimmed = merged.slice(0, 10);
-    mediaGroupIndex.set(grpKey, trimmed);
-    await storeSet(grpKey, trimmed);
-  }
-}
-
-async function resolveSlideshowItems(chatId, repliedMsg) {
-  if (!repliedMsg) return [];
-  if (repliedMsg.media_group_id) {
-    const grpKey = `slide_grp:${chatId}:${repliedMsg.media_group_id}`;
-    const stored = await storeGet(grpKey);
-    const mem = mediaGroupIndex.get(grpKey);
-    const list = Array.isArray(stored) && stored.length ? stored : Array.isArray(mem) ? mem : [];
-    if (list.length > 0) return list.slice(0, 10);
-  }
-  const msgKey = `slide_msg:${chatId}:${repliedMsg.message_id}`;
-  const storedSingle = await storeGet(msgKey);
-  if (storedSingle) return [storedSingle];
-  const single = getSlideItemFromMessage(repliedMsg);
-  return single ? [single] : [];
-}
-
-function buildSlideshowKeyboard(deckId, index, total) {
-  const prevIdx = (index - 1 + total) % total;
-  const nextIdx = (index + 1) % total;
-  return {
-    inline_keyboard: [
-      [
-        { text: "◀ Prev", callback_data: `slide:${deckId}:${prevIdx}` },
-        { text: `${index + 1} / ${total}`, callback_data: `slide_noop:${deckId}:${index}` },
-        { text: "Next ▶", callback_data: `slide:${deckId}:${nextIdx}` }
-      ]
-    ]
-  };
-}
-
-function formatSlideCaption(baseCaption, index, total) {
-  const header = `Slide ${index + 1} of ${total}`;
-  return baseCaption ? `${baseCaption}\n\n${header}` : header;
-}
-
-async function sendSlideshowDeck(token, chatId, items, caption, replyToMessageId) {
-  const cleanItems = items.slice(0, 10);
-  const deckId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const deckKey = `slideshow:${chatId}:${deckId}`;
-  const payload = {
-    caption: caption || "",
-    items: cleanItems.map((it) => ({ type: it.type, media: it.media })),
-  };
-  memoryStore.set(deckKey, payload);
-  await storeSet(deckKey, payload);
-
-  const first = cleanItems[0];
-  const replyMarkup = buildSlideshowKeyboard(deckId, 0, cleanItems.length);
-  const fullCaption = formatSlideCaption(caption, 0, cleanItems.length);
-
-  if (first.type === "video") {
-    return await tgApi(token, "sendVideo", {
-      chat_id: chatId,
-      video: first.media,
-      caption: fullCaption,
-      reply_markup: replyMarkup,
-      ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
-    });
-  }
-  if (first.type === "animation") {
-    return await tgApi(token, "sendAnimation", {
-      chat_id: chatId,
-      animation: first.media,
-      caption: fullCaption,
-      reply_markup: replyMarkup,
-      ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
-    });
-  }
-  return await tgApi(token, "sendPhoto", {
-    chat_id: chatId,
-    photo: first.media,
-    caption: fullCaption,
-    reply_markup: replyMarkup,
-    ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
-  });
 }
 
 function hasRedis() {
@@ -696,7 +557,7 @@ function buildStartIntro(botUsername = "") {
       "",
       "• <b>Admin &amp; Access:</b> Promotions, custom ranks, admin cache, anonymous admin bypass &amp; user approvals",
       "• <b>Active Enforcement:</b> Bans, mutes, kicks, timed actions, warnings, 51 content locks, allowlists, antiflood &amp; wildcard blocklists",
-      "• <b>Smart Automation:</b> Media/text greetings, single-view button slideshows, pin tools, purges, rules, filters, notes, raid/night/slow controls &amp; join auto-approval",
+      "• <b>Smart Automation:</b> Media/text greetings, pin tools, purges, rules, media/text filters &amp; notes, raid/night/slow controls &amp; join auto-approval",
       "",
       "Select <b>Help</b> below to inspect every command category."
     ].join("\n"),
@@ -1134,48 +995,6 @@ async function handleCallback(cq, token) {
       text: data.slice(6),
       show_alert: true,
     });
-    return;
-  }
-
-  if (data.startsWith("slide_noop:")) {
-    await safeTgApi(token, "answerCallbackQuery", { callback_query_id: cq.id });
-    return;
-  }
-
-  if (data.startsWith("slide:")) {
-    const [, deckId, idxRaw] = data.split(":");
-    const nextIdx = parseInt(idxRaw, 10);
-    const deckKey = `slideshow:${chatId}:${deckId}`;
-    const deck = memoryStore.get(deckKey) || (await storeGet(deckKey));
-    if (!deck || !Array.isArray(deck.items) || !deck.items.length || Number.isNaN(nextIdx)) {
-      await safeTgApi(token, "answerCallbackQuery", {
-        callback_query_id: cq.id,
-        text: "Slideshow expired.",
-        show_alert: false,
-      });
-      return;
-    }
-
-    const total = deck.items.length;
-    const targetIdx = ((nextIdx % total) + total) % total;
-    const item = deck.items[targetIdx];
-    const replyMarkup = buildSlideshowKeyboard(deckId, targetIdx, total);
-    const fullCaption = formatSlideCaption(deck.caption, targetIdx, total);
-
-    const mediaObj =
-      item.type === "video"
-        ? { type: "video", media: item.media, caption: fullCaption }
-        : item.type === "animation"
-          ? { type: "animation", media: item.media, caption: fullCaption }
-          : { type: "photo", media: item.media, caption: fullCaption };
-
-    await safeTgApi(token, "editMessageMedia", {
-      chat_id: chatId,
-      message_id: messageId,
-      media: mediaObj,
-      reply_markup: replyMarkup,
-    });
-    await safeTgApi(token, "answerCallbackQuery", { callback_query_id: cq.id });
     return;
   }
 
@@ -1691,7 +1510,7 @@ async function handleMessage(message, token, logChatId = "") {
     const userKnownSet = new Set([
       "start", "help", "id", "info", "chatinfo", "adminlist", "approval", "flood", "blocklist",
       "cleancommandtypes", "locks", "locktypes", "filters", "get", "notes",
-      "pinned", "rules", "warnings", "warns", "kickme", "report", "slideshow"
+      "pinned", "rules", "warnings", "warns", "kickme", "report"
     ]);
     const isAdminCmd = adminOnlySet.has(cmdName);
     const isKnown = isAdminCmd || userKnownSet.has(cmdName);
@@ -1796,25 +1615,6 @@ async function handleMessage(message, token, logChatId = "") {
     const resetSt = { count: 0, ts: [] };
     floodState.set(`${chatId}:${senderId}`, resetSt);
     await storeSet(`flood:${chatId}:${senderId}`, resetSt);
-  }
-
-  if (cmd === "/slideshow") {
-    const items = await resolveSlideshowItems(chatId, message.reply_to_message);
-    if (!items.length) {
-      await safeSend(
-        token,
-        chatId,
-        "Reply to a photo, video, GIF, or media album (5–10 items) with /slideshow [caption]."
-      );
-      return;
-    }
-    const caption = cmdArgsStr || items[0]?.caption || "";
-    try {
-      await sendSlideshowDeck(token, chatId, items, caption, message.reply_to_message.message_id);
-    } catch (err) {
-      await safeSend(token, chatId, `Slideshow failed: ${err.message}`);
-    }
-    return;
   }
 
   if (cmd === "/start") {
@@ -3439,3 +3239,4 @@ async function tgApi(token, method, body) {
   }
   return data;
 }
+
