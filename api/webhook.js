@@ -542,6 +542,64 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+function getActionBadge(actionType = "info") {
+  const badges = {
+    ban: "🔨⚡",
+    tban: "⏳🔨",
+    unban: "🔓✨",
+    mute: "🔇⚡",
+    tmute: "⏳🔇",
+    unmute: "🔊✨",
+    kick: "👢💨",
+    warn: "⚠️🔥",
+    lock: "🔒🛡️",
+    unlock: "🔓✨",
+    note: "📝✨",
+    filter: "💬⚡",
+    purge: "🧹💨",
+    poll: "📊🔥",
+    success: "✅⚡",
+    info: "✨📌",
+  };
+  return badges[actionType] || "⚡✨";
+}
+
+function formatAnimatedOutcome(actionType, title, details = []) {
+  const badge = getActionBadge(actionType);
+  const cleanDetails = (details || []).filter(Boolean).map((line) => `▸ ${line}`);
+  return [
+    `${badge} <b>${escapeHtml(title)}</b>`,
+    ...(cleanDetails.length ? ["┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄", ...cleanDetails] : []),
+  ].join("\n");
+}
+
+function buildProgressBar(value, maxValue, length = 8) {
+  if (!maxValue || maxValue <= 0) return "▱".repeat(length);
+  const ratio = Math.max(0, Math.min(1, value / maxValue));
+  const filled = Math.round(ratio * length);
+  return "▰".repeat(filled) + "▱".repeat(length - filled);
+}
+
+function getMedal(index) {
+  if (index === 0) return "🥇";
+  if (index === 1) return "🥈";
+  if (index === 2) return "🥉";
+  return `<code>#${index + 1}</code>`;
+}
+
+function formatPollAnnouncement(question, options, anonymous = true, multi = false) {
+  const optLines = options.map((opt, idx) => `  <code>0${idx + 1}</code> • <b>${escapeHtml(opt)}</b>`);
+  return [
+    "📊🔥 <b>LIVE COMMUNITY POLL</b>",
+    "━━━━━━━━━━━━━━━━━━━━━━",
+    `❓ <b>${escapeHtml(question)}</b>`,
+    "",
+    ...optLines,
+    "━━━━━━━━━━━━━━━━━━━━━━",
+    `🗳️ <i>${anonymous ? "Anonymous voting" : "Public voting"} • ${multi ? "Multiple choice" : "Single choice"}</i>`
+  ].join("\n");
+}
+
 function getUserDisplayLabel(userObj, fallbackId = "") {
   if (!userObj) return String(fallbackId || "User");
   if (userObj.username) return `@${userObj.username}`;
@@ -677,18 +735,19 @@ function buildStartIntro(botUsername = "") {
 
   return {
     text: [
-      `<b>${escapeHtml(BOT_NAME)}</b>`,
-      "<b>Your all-in-one group assistant for live discussions and active communities.</b>",
-      "",
-      "• <b>Instant controls for rules, locks, anti-spam &amp; member actions</b>",
-      "• <b>Built-in karma rewards, admin rankings, polls &amp; quick notes</b>",
-      "",
-      "<b>Select Help below to view all commands.</b>"
+      `⚡ <b>${escapeHtml(BOT_NAME)}</b>  <code>v2.0 • LIVE</code>`,
+      "<i>High-speed group control, real-time anti-spam &amp; community rewards</i>",
+      "━━━━━━━━━━━━━━━━━━━━━━",
+      "🛡️ <b>Moderation &amp; Guards:</b> Locks, antiflood, dup-guard, quarantine &amp; raid shield",
+      "⭐ <b>Community Engine:</b> Karma points, activity tiers, admin ranks &amp; leaderboards",
+      "📌 <b>Workflow Tools:</b> Custom filters, saved notes (<code>#note</code>), polls &amp; purges",
+      "━━━━━━━━━━━━━━━━━━━━━━",
+      "👇 <b>Tap Help to explore categories or add me straight to your group.</b>"
     ].join("\n"),
     replyMarkup: {
       inline_keyboard: [
         [
-          { text: "📚 Help", callback_data: "cc:help_menu" },
+          { text: "📚 Help Menu", callback_data: "cc:help_menu" },
           { text: "➕ Add to Group", url: addLink }
         ]
       ]
@@ -994,7 +1053,14 @@ async function processNewMemberJoin(token, chatId, cfg, member, chat) {
     cfg.raid.enabled = true;
     cfg.raid.untilTs = now + (cfg.raid.actionSeconds || 600) * 1000;
     await saveChatConfig(chatId, cfg);
-    await safeSend(token, chatId, `<b>Auto-raid mode activated for ${cfg.raid.actionSeconds || 600}s.</b>`);
+    await safeSend(
+      token,
+      chatId,
+      formatAnimatedOutcome("lock", "Auto-Raid Shield Activated", [
+        `Duration: <code>${cfg.raid.actionSeconds || 600}s</code>`,
+        `Join spike: <code>${rList.length}</code> joins`
+      ])
+    );
   }
 
   if (isRaidActive(cfg.raid) && member?.id && !member.is_bot) {
@@ -1435,16 +1501,26 @@ async function applyPunishment(token, chatId, targetUser, action, durationSecond
     : targetUser?.first_name || String(targetUser?.id || "");
 
   let out = "";
+  let badgeType = action;
+  let titleText = "";
+  const details = [`Target: <b>${escapeHtml(label)}</b>`];
+  if (durationSeconds > 0) details.push(`Duration: <code>${durationSeconds}s</code>`);
+  if (reason) details.push(`Reason: <i>${escapeHtml(reason)}</i>`);
+
   if (action === "ban" || action === "tban") {
     const payload = { chat_id: chatId, user_id: targetUser.id };
     if (untilDate) payload.until_date = untilDate;
     await tgApi(token, "banChatMember", payload);
+    badgeType = action === "tban" && durationSeconds ? "tban" : "ban";
+    titleText = badgeType === "tban" ? "Member Temporarily Banned" : "Member Banned";
     out = action === "tban" && durationSeconds
       ? `I've temporarily banned ${label} (${durationSeconds}s)${reason ? `\nReason: ${reason}` : ""}`
       : `I've banned ${label}${reason ? `\nReason: ${reason}` : ""}`;
   } else if (action === "kick") {
     await tgApi(token, "banChatMember", { chat_id: chatId, user_id: targetUser.id });
     await tgApi(token, "unbanChatMember", { chat_id: chatId, user_id: targetUser.id, only_if_banned: true });
+    badgeType = "kick";
+    titleText = "Member Kicked";
     out = `I've kicked ${label}${reason ? `\nReason: ${reason}` : ""}`;
   } else if (action === "mute" || action === "tmute") {
     const payload = {
@@ -1454,6 +1530,8 @@ async function applyPunishment(token, chatId, targetUser, action, durationSecond
     };
     if (untilDate) payload.until_date = untilDate;
     await tgApi(token, "restrictChatMember", payload);
+    badgeType = durationSeconds ? "tmute" : "mute";
+    titleText = badgeType === "tmute" ? "Member Temporarily Muted" : "Member Muted";
     out = `I've muted ${label}${durationSeconds ? ` (${durationSeconds}s)` : ""}${reason ? `\nReason: ${reason}` : ""}`;
   } else {
     throw new Error(`Unsupported action: ${action}`);
@@ -1465,7 +1543,7 @@ async function applyPunishment(token, chatId, targetUser, action, durationSecond
   if (logChatId) {
     await sendAuditLog(token, logChatId, `Chat ${chatId}: ${out.replace(/\n/g, " | ")}`);
   }
-  return out;
+  return formatAnimatedOutcome(badgeType, titleText, details);
 }
 
 async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessageId = null, logChatId = "", silent = false, actorUser = null) {
@@ -1498,18 +1576,36 @@ async function applyWarning(token, chatId, targetUser, reason, cfg, replyToMessa
     if (PUNISHMENT_ACTIONS.has(wCfg.mode)) {
       const msg = await applyPunishment(token, chatId, targetUser, wCfg.mode, wCfg.durationSeconds, reason, logChatId, actorUser);
       if (!silent) {
-        await safeSend(token, chatId, `<b>${escapeHtml(`${msg} (reached ${wCfg.limit}/${wCfg.limit} warnings).`)}</b>`, undefined, replyToMessageId);
+        await safeSend(
+          token,
+          chatId,
+          `${msg}\n⚡ <i>Warning limit reached (${wCfg.limit}/${wCfg.limit})</i>`,
+          undefined,
+          replyToMessageId
+        );
       }
       return;
     }
   }
 
-  const text = `Warning (${warns.length}/${wCfg.limit || 3}) issued to ${label}.\nReason: ${reason || "Warning"}`;
+  const limit = wCfg.limit || 3;
+  const bar = buildProgressBar(warns.length, limit, 6);
+  const plainLog = `Warning (${warns.length}/${limit}) issued to ${label}. Reason: ${reason || "Warning"}`;
   if (!silent) {
-    await safeSend(token, chatId, `<b>${escapeHtml(text)}</b>`, undefined, replyToMessageId);
+    await safeSend(
+      token,
+      chatId,
+      formatAnimatedOutcome("warn", "Warning Issued", [
+        `User: <b>${escapeHtml(label)}</b>`,
+        `Count: <code>${bar}</code> <b>${warns.length}/${limit}</b>`,
+        `Reason: <i>${escapeHtml(reason || "Warning")}</i>`
+      ]),
+      undefined,
+      replyToMessageId
+    );
   }
   if (logChatId) {
-    await sendAuditLog(token, logChatId, `Chat ${chatId}: ${text.replace(/\n/g, " | ")}`);
+    await sendAuditLog(token, logChatId, `Chat ${chatId}: ${plainLog}`);
   }
 }
 
@@ -1522,9 +1618,17 @@ async function runEnforcementAction(token, chatId, sender, mode, durationSeconds
   if (!PUNISHMENT_ACTIONS.has(mode)) return;
   try {
     const resText = await applyPunishment(token, chatId, sender, mode, durationSeconds || 0, reason, logChatId, actorUser);
-    await safeSend(token, chatId, `<b>${escapeHtml(resText)}</b>`);
+    await safeSend(token, chatId, resText);
   } catch (err) {
-    await safeSend(token, chatId, `<b>${escapeHtml(`Action (${mode}) failed for ${sender?.first_name || sender?.id}: ${err.message}`)}</b>`);
+    await safeSend(
+      token,
+      chatId,
+      formatAnimatedOutcome("info", "Action Failed", [
+        `Mode: <code>${escapeHtml(mode)}</code>`,
+        `User: <b>${escapeHtml(sender?.first_name || sender?.id)}</b>`,
+        `Error: <i>${escapeHtml(err.message)}</i>`
+      ])
+    );
   }
 }
 
@@ -1600,7 +1704,11 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       await safeSend(
         token,
         chatId,
-        `<b>Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}</b>`
+        formatAnimatedOutcome("info", "ID Lookup", [
+          `Chat ID: <code>${chatId}</code>`,
+          `Your ID: <code>${senderId ?? "N/A"}</code>`,
+          ...(replyId ? [`Replied User ID: <code>${replyId}</code>`] : [])
+        ])
       );
       return;
     }
@@ -1702,7 +1810,9 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `<b>${escapeHtml(`Reported to admins${mentions.length ? `: ${mentions.slice(0, 8).join(" ")}` : "."}`)}</b>`,
+      formatAnimatedOutcome("info", "Report Dispatched to Admins", [
+        `Notified: <b>${escapeHtml(mentions.length ? mentions.slice(0, 8).join(" ") : "Group Admins")}</b>`
+      ]),
       undefined,
       message.reply_to_message?.message_id || message.message_id
     );
@@ -1830,7 +1940,11 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
         await safeSend(
           token,
           chatId,
-          `<b>${escapeHtml(`Locked (${lType}) triggered for ${sender.first_name}, but could not delete message (check bot delete permission).`)}</b>`
+          formatAnimatedOutcome("lock", "Lock Triggered (Delete Failed)", [
+            `Type: <code>${escapeHtml(lType)}</code>`,
+            `User: <b>${escapeHtml(sender.first_name)}</b>`,
+            `Hint: <i>Check bot delete permission</i>`
+          ])
         );
       }
       const lConf = cfg.lockConfig[lType];
@@ -1968,7 +2082,10 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       await safeSend(
         token,
         chatId,
-        `<b>⭐ +1 Karma awarded to ${escapeHtml(curRec.name)} (Total: ${curRec.points} pts • ${escapeHtml(rankBadge)})</b>`,
+        formatAnimatedOutcome("success", "+1 Karma Boosted!", [
+          `Member: <b>${escapeHtml(curRec.name)}</b>`,
+          `Total Karma: <code>${curRec.points} pts</code> • <i>${escapeHtml(rankBadge)}</i>`
+        ]),
         undefined,
         message.message_id
       );
@@ -2031,14 +2148,27 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       return;
     }
 
-    const lines = entries.map(
-      (e, idx) =>
-        `<b>${idx + 1}. ${escapeHtml(e.name)} — ${e.msgs} msgs • ${e.kPts} karma (${escapeHtml(getMemberActivityTier(e.msgs, e.kPts))})</b>`
-    );
+    const maxScore = entries[0]?.score || 1;
+    const lines = entries.map((e, idx) => {
+      const medal = getMedal(idx);
+      const bar = buildProgressBar(e.score, maxScore, 8);
+      const tier = escapeHtml(getMemberActivityTier(e.msgs, e.kPts));
+      return [
+        `${medal} <b>${escapeHtml(e.name)}</b> <i>(${tier})</i>`,
+        `    <code>${bar}</code> <b>${e.score}</b> pts • ${e.msgs} msgs • ⭐ ${e.kPts}`
+      ].join("\n");
+    });
+
     await safeSend(
       token,
       chatId,
-      `<b>🏆 Top Active Members\n──────────────────────</b>\n${lines.join("\n")}`,
+      [
+        "🏆🔥 <b>TOP ACTIVE CHATTERS</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        ...lines,
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "💡 <i>Score = Messages + (Karma × 3)</i>"
+      ].join("\n"),
       undefined,
       message.message_id
     );
@@ -2057,10 +2187,31 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     const kPts = cfg.karma?.[String(uid)]?.points || 0;
     const isApp = (cfg.approvedUsers || []).includes(Number(uid));
     const wList = (await storeGet(`warns:${chatId}:${uid}`)) || [];
+    const activityScore = (mSt.messages || 0) + kPts * 3;
+    const nextMilestone = activityScore < 40
+      ? 40
+      : activityScore < 120
+        ? 120
+        : activityScore < 300
+          ? 300
+          : Math.ceil((activityScore + 1) / 100) * 100;
+    const bar = buildProgressBar(activityScore, nextMilestone, 10);
+
     await safeSend(
       token,
       chatId,
-      `<b>📊 Member Activity Summary\nUser: ${escapeHtml(mSt.name || getUserDisplayLabel(uObj, uid))}\nMessages Sent: ${mSt.messages || 0}\nKarma Points: ${kPts} (${escapeHtml(getKarmaRankBadge(kPts))})\nActivity Tier: ${escapeHtml(getMemberActivityTier(mSt.messages || 0, kPts))}\nWarnings: ${wList.length}/${cfg.warnings.limit}\nApproved: ${isApp ? "Yes" : "No"}</b>`,
+      [
+        "📈⚡ <b>MEMBER STATS CARD</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        `👤 <b>User:</b> ${escapeHtml(mSt.name || getUserDisplayLabel(uObj, uid))}`,
+        `🏅 <b>Tier:</b> <b>${escapeHtml(getMemberActivityTier(mSt.messages || 0, kPts))}</b>`,
+        `💬 <b>Messages:</b> <code>${mSt.messages || 0}</code>`,
+        `⭐ <b>Karma:</b> <code>${kPts}</code> pts (<i>${escapeHtml(getKarmaRankBadge(kPts))}</i>)`,
+        `⚠️ <b>Warnings:</b> <code>${wList.length}/${cfg.warnings.limit}</code>`,
+        `✅ <b>Approved:</b> <code>${isApp ? "Yes" : "No"}</code>`,
+        "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄",
+        `🎯 <b>Next Tier Progress:</b> <code>${bar}</code> <code>${activityScore}/${nextMilestone}</code>`
+      ].join("\n"),
       undefined,
       message.message_id
     );
@@ -2081,7 +2232,11 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `<b>⭐ Karma Profile\nUser: ${escapeHtml(rec.name || getUserDisplayLabel(uObj, uid))}\nPoints: ${pts}\nRank: ${escapeHtml(badge)}</b>`,
+      formatAnimatedOutcome("success", "Karma Profile", [
+        `User: <b>${escapeHtml(rec.name || getUserDisplayLabel(uObj, uid))}</b>`,
+        `Points: <code>${pts}</code>`,
+        `Rank: <b>${escapeHtml(badge)}</b>`
+      ]),
       undefined,
       message.message_id
     );
@@ -2104,13 +2259,27 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       return;
     }
 
-    const lines = entries.map(
-      (e, idx) => `<b>${idx + 1}. ${escapeHtml(e.name)} — ${e.points} pts (${escapeHtml(getKarmaRankBadge(e.points))})</b>`
-    );
+    const maxPts = entries[0]?.points || 1;
+    const lines = entries.map((e, idx) => {
+      const medal = getMedal(idx);
+      const bar = buildProgressBar(e.points, maxPts, 8);
+      const badge = escapeHtml(getKarmaRankBadge(e.points));
+      return [
+        `${medal} <b>${escapeHtml(e.name)}</b> • <b>${e.points} pts</b>`,
+        `    <code>${bar}</code> <i>${badge}</i>`
+      ].join("\n");
+    });
+
     await safeSend(
       token,
       chatId,
-      `<b>🏆 Top Helpful Members\n──────────────────────</b>\n${lines.join("\n")}`,
+      [
+        "🌟⚡ <b>KARMA HALL OF FAME</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        ...lines,
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "💬 <i>Reply with \"thanks\", \"thx\", \"ty\", or \"+1\" to reward +1 karma</i>"
+      ].join("\n"),
       undefined,
       message.message_id
     );
@@ -2152,14 +2321,26 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
       return;
     }
 
-    const lines = ranked.map(
-      (r, idx) =>
-        `<b>${idx + 1}. ${escapeHtml(r.name)} [${escapeHtml(r.badge)}]\n   Score: ${r.score} pts (${r.msgs} msgs • ${r.actions} actions)</b>`
-    );
+    const maxAdminScore = ranked[0]?.score || 1;
+    const lines = ranked.map((r, idx) => {
+      const medal = getMedal(idx);
+      const bar = buildProgressBar(r.score, maxAdminScore, 8);
+      return [
+        `${medal} <b>${escapeHtml(r.name)}</b> [<b>${escapeHtml(r.badge)}</b>]`,
+        `    <code>${bar}</code> <b>${r.score}</b> pts • 💬 ${r.msgs} • 🛡️ ${r.actions} actions`
+      ].join("\n");
+    });
+
     await safeSend(
       token,
       chatId,
-      `<b>🛡️ Admin Activity Rankings\n──────────────────────</b>\n${lines.join("\n")}`,
+      [
+        "🛡️🔥 <b>ADMIN COMMAND LEADERBOARD</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        ...lines,
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "⚡ <i>Score = Messages + (Moderation Actions × 5)</i>"
+      ].join("\n"),
       undefined,
       message.message_id
     );
@@ -2171,7 +2352,11 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `<b>Chat ID: ${chatId}\nYour ID: ${senderId ?? "N/A"}${replyId ? `\nReplied User ID: ${replyId}` : ""}</b>`,
+      formatAnimatedOutcome("info", "ID Lookup", [
+        `Chat ID: <code>${chatId}</code>`,
+        `Your ID: <code>${senderId ?? "N/A"}</code>`,
+        ...(replyId ? [`Replied User ID: <code>${replyId}</code>`] : [])
+      ]),
       undefined,
       message.message_id
     );
@@ -2187,7 +2372,14 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `<b>User Info:\nName: ${escapeHtml(u?.first_name || "N/A")}${u?.last_name ? ` ${escapeHtml(u.last_name)}` : ""}\nUsername: ${u?.username ? escapeHtml(`@${u.username}`) : "None"}\nID: ${u?.id ?? "N/A"}\nMessages: ${mMsgs}\nKarma: ${kPts} pts (${escapeHtml(getKarmaRankBadge(kPts))})${watchNote ? `\nWatchlist: ${escapeHtml(watchNote)}` : ""}</b>`,
+      formatAnimatedOutcome("info", "User Profile", [
+        `Name: <b>${escapeHtml(u?.first_name || "N/A")}${u?.last_name ? ` ${escapeHtml(u.last_name)}` : ""}</b>`,
+        `Username: <code>${u?.username ? escapeHtml(`@${u.username}`) : "None"}</code>`,
+        `ID: <code>${u?.id ?? "N/A"}</code>`,
+        `Messages: <code>${mMsgs}</code>`,
+        `Karma: <code>${kPts} pts</code> (<i>${escapeHtml(getKarmaRankBadge(kPts))}</i>)`,
+        ...(watchNote ? [`Watchlist: <i>${escapeHtml(watchNote)}</i>`] : [])
+      ]),
       undefined,
       message.message_id
     );
@@ -2199,7 +2391,12 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `<b>Chat Info:\nTitle: ${escapeHtml(message.chat.title || "Group")}\nID: ${chatId}\nType: ${escapeHtml(message.chat.type)}\nMembers: ${countRes?.result ?? "N/A"}</b>`,
+      formatAnimatedOutcome("info", "Chat Overview", [
+        `Title: <b>${escapeHtml(message.chat.title || "Group")}</b>`,
+        `ID: <code>${chatId}</code>`,
+        `Type: <code>${escapeHtml(message.chat.type)}</code>`,
+        `Members: <code>${countRes?.result ?? "N/A"}</code>`
+      ]),
       undefined,
       message.message_id
     );
@@ -2220,7 +2417,10 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `<b>${escapeHtml(`Report sent to admins${mentions.length ? `: ${mentions.slice(0, 8).join(" ")}` : "."}${cmdArgsStr ? `\nReason: ${cmdArgsStr}` : ""}`)}</b>`,
+      formatAnimatedOutcome("info", "Report Sent to Admins", [
+        `Admins: <b>${escapeHtml(mentions.length ? mentions.slice(0, 8).join(" ") : "Group Admins")}</b>`,
+        ...(cmdArgsStr ? [`Reason: <i>${escapeHtml(cmdArgsStr)}</i>`] : [])
+      ]),
       undefined,
       message.message_id
     );
@@ -2265,7 +2465,9 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      keys.length ? `<b>Saved notes:\n${escapeHtml(keys.map((k) => `#${k}`).join(", "))}</b>` : "<b>No saved notes.</b>",
+      keys.length
+        ? formatAnimatedOutcome("note", "Saved Notes", [keys.map((k) => `<code>#${escapeHtml(k)}</code>`).join(", ")])
+        : "<b>No saved notes.</b>",
       undefined,
       message.message_id
     );
@@ -2289,7 +2491,16 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     const target = await resolveTargetUser(token, message, parts);
     const checkUser = target.id ? target : { id: senderId, label: sender?.username ? `@${sender.username}` : String(senderId) };
     const isApp = checkUser.id && cfg.approvedUsers.includes(checkUser.id);
-    await safeSend(token, chatId, `<b>${escapeHtml(`${checkUser.label} is ${isApp ? "approved" : "not approved"}.`)}</b>`, undefined, message.message_id);
+    await safeSend(
+      token,
+      chatId,
+      formatAnimatedOutcome("success", "Approval Status", [
+        `User: <b>${escapeHtml(checkUser.label)}</b>`,
+        `Status: <code>${isApp ? "Approved" : "Not Approved"}</code>`
+      ]),
+      undefined,
+      message.message_id
+    );
     return;
   }
 
@@ -2297,7 +2508,15 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `<b>Flood &amp; Guards:\nLimit: ${cfg.flood.limit || "off"}\nTimer: ${cfg.flood.timerCount ? `${cfg.flood.timerCount} msgs / ${cfg.flood.timerSeconds}s` : "off"}\nAction: ${cfg.flood.action}\nClear flood: ${cfg.flood.clearFlood ? "on" : "off"}\nAuto-slow: ${cfg.flood.autoSlowSeconds ? `${cfg.flood.autoSlowSeconds}s` : "off"}\nFirst-msg guard: ${cfg.firstMsgGuard?.enabled ? `on (${cfg.firstMsgGuard.action})` : "off"}\nDup guard: ${cfg.dupGuard?.limit ? `${cfg.dupGuard.limit} (${cfg.dupGuard.action})` : "off"}</b>`,
+      formatAnimatedOutcome("info", "Flood & Guards Status", [
+        `Limit: <code>${cfg.flood.limit || "off"}</code>`,
+        `Timer: <code>${cfg.flood.timerCount ? `${cfg.flood.timerCount} msgs / ${cfg.flood.timerSeconds}s` : "off"}</code>`,
+        `Action: <code>${escapeHtml(cfg.flood.action)}</code>`,
+        `Clear flood: <code>${cfg.flood.clearFlood ? "on" : "off"}</code>`,
+        `Auto-slow: <code>${cfg.flood.autoSlowSeconds ? `${cfg.flood.autoSlowSeconds}s` : "off"}</code>`,
+        `First-msg guard: <code>${cfg.firstMsgGuard?.enabled ? `on (${cfg.firstMsgGuard.action})` : "off"}</code>`,
+        `Dup guard: <code>${cfg.dupGuard?.limit ? `${cfg.dupGuard.limit} (${cfg.dupGuard.action})` : "off"}</code>`
+      ]),
       undefined,
       message.message_id
     );
@@ -2372,7 +2591,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
         await safeSend(token, chatId, "<b>No pinned message found.</b>", undefined, message.message_id);
         return;
       }
-      await safeSend(token, chatId, "<b>Current pinned message.</b>", undefined, pId);
+      await safeSend(token, chatId, formatAnimatedOutcome("info", "Pinned Message Located"), undefined, pId);
     } catch (err) {
       await safeSend(token, chatId, `<b>${escapeHtml(`Failed to get pinned message: ${err.message}`)}</b>`, undefined, message.message_id);
     }
@@ -2412,7 +2631,11 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     await safeSend(
       token,
       chatId,
-      `<b>Warning settings:\nLimit: ${cfg.warnings.limit}\nMode: ${cfg.warnings.mode}\nExpire time: ${cfg.warnings.timeSeconds ? `${cfg.warnings.timeSeconds}s` : "off"}</b>`,
+      formatAnimatedOutcome("warn", "Warning Configuration", [
+        `Limit: <code>${cfg.warnings.limit}</code>`,
+        `Mode: <code>${escapeHtml(cfg.warnings.mode)}</code>`,
+        `Expire time: <code>${cfg.warnings.timeSeconds ? `${cfg.warnings.timeSeconds}s` : "off"}</code>`
+      ]),
       undefined,
       message.message_id
     );
@@ -2428,7 +2651,7 @@ async function handleMessage(message, token, logChatId = "", isEdited = false) {
     }
     try {
       const resText = await applyPunishment(token, chatId, sender, "kick", 0, "Used /kickme", logChatId);
-      await safeSend(token, chatId, `<b>${escapeHtml(resText)}</b>`, undefined, message.message_id);
+      await safeSend(token, chatId, resText, undefined, message.message_id);
     } catch (err) {
       await safeSend(token, chatId, `<b>${escapeHtml(`Kick failed: ${err.message}`)}</b>`, undefined, message.message_id);
     }
@@ -2502,6 +2725,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   const replyAdmin = (text, replyMarkup) =>
     safeSend(token, chatId, `<b>${escapeHtml(text)}</b>`, replyMarkup, adminMsgId);
 
+  const replyAnimated = (actionType, title, details = [], replyMarkup) =>
+    safeSend(token, chatId, formatAnimatedOutcome(actionType, title, details), replyMarkup, adminMsgId);
+
   if (cmd === "/blocksticker") {
     const keysToAdd = [];
     const repStickerSet = message.reply_to_message?.sticker?.set_name;
@@ -2531,7 +2757,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     for (const k of keysToAdd) set.add(k);
     cfg.blockedPacks = Array.from(set);
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Blacklisted pack(s): ${keysToAdd.join(", ")}`);
+    await replyAnimated("lock", "Pack Blacklisted", [`Packs: <code>${escapeHtml(keysToAdd.join(", "))}</code>`]);
     return;
   }
 
@@ -2543,7 +2769,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const toRemove = new Set(cmdArgs.map((a) => a.trim().toLowerCase()));
     cfg.blockedPacks = (cfg.blockedPacks || []).filter((p) => !toRemove.has(String(p).toLowerCase()));
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Removed from blacklist: ${Array.from(toRemove).join(", ")}`);
+    await replyAnimated("unlock", "Pack Unblacklisted", [`Removed: <code>${escapeHtml(Array.from(toRemove).join(", "))}</code>`]);
     return;
   }
 
@@ -2557,7 +2783,10 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const validAct = ["warn", "mute", "ban", "kick", "tban", "tmute"].includes(act) ? act : "mute";
     cfg.firstMsgGuard = { enabled: flag, action: validAct };
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`First-message link/forward guard set to ${flag ? `on (${validAct})` : "off"}.`);
+    await replyAnimated(flag ? "lock" : "unlock", "First-Message Guard Updated", [
+      `Status: <code>${flag ? "ON" : "OFF"}</code>`,
+      ...(flag ? [`Action: <code>${escapeHtml(validAct)}</code>`] : [])
+    ]);
     return;
   }
 
@@ -2570,11 +2799,10 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const delaySec = cmdArgs[1] ? Math.max(0, Math.min(300, parseInt(cmdArgs[1], 10) || 0)) : 0;
     cfg.cleanBotMsgs = { enabled: flag, delaySeconds: delaySec };
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(
-      flag
-        ? `Auto-delete bot replies enabled${delaySec ? ` (${delaySec}s delay)` : ""}.`
-        : "Auto-delete bot replies disabled."
-    );
+    await replyAnimated("purge", "Bot Message Cleanup Updated", [
+      `Status: <code>${flag ? "ON" : "OFF"}</code>`,
+      ...(flag && delaySec ? [`Delay: <code>${delaySec}s</code>`] : [])
+    ]);
     return;
   }
 
@@ -2586,7 +2814,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.karmaEnabled = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Member karma system set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("success", "Karma System Updated", [`Status: <code>${flag ? "ON" : "OFF"}</code>`]);
     return;
   }
 
@@ -2598,19 +2826,23 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       return;
     }
     const rk = String(target.id);
+    const finalPts = Math.max(0, val);
     cfg.karma[rk] = {
       name: target.user ? getUserDisplayLabel(target.user, rk) : target.label,
-      points: Math.max(0, val),
+      points: finalPts,
     };
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Set karma for ${target.label} to ${Math.max(0, val)} pts.`);
+    await replyAnimated("success", "Karma Updated", [
+      `User: <b>${escapeHtml(target.label)}</b>`,
+      `New Points: <code>${finalPts} pts</code>`
+    ]);
     return;
   }
 
   if (cmd === "/resetkarma") {
     cfg.karma = {};
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("All member karma points have been reset.");
+    await replyAnimated("success", "All Karma Points Reset");
     return;
   }
 
@@ -2639,7 +2871,10 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
               can_add_web_page_previews: true,
             },
       });
-      await replyAdmin(isLock ? "Chat locked for non-admin members." : "Chat unlocked for members.");
+      await replyAnimated(
+        isLock ? "lock" : "unlock",
+        isLock ? "Chat Locked for Members" : "Chat Unlocked for Members"
+      );
     } catch (err) {
       await replyAdmin(`Failed: ${err.message}`);
     }
@@ -2654,7 +2889,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.cleanService = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Clean service messages set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("purge", "Service Cleanup Updated", [`Status: <code>${flag ? "ON" : "OFF"}</code>`]);
     return;
   }
 
@@ -2666,7 +2901,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.flood.autoSlowSeconds = secs;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(secs === 0 ? "Auto-slowmode on flood disabled." : `Auto-slowmode on flood set to ${secs}s.`);
+    await replyAnimated("lock", "Flood Auto-Slowmode Updated", [
+      `Delay: <code>${secs === 0 ? "OFF" : `${secs}s`}</code>`
+    ]);
     return;
   }
 
@@ -2675,7 +2912,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     if (["off", "no", "0"].includes(raw0)) {
       cfg.dupGuard.limit = 0;
       await saveChatConfig(chatId, cfg);
-      await replyAdmin("Duplicate guard disabled.");
+      await replyAnimated("unlock", "Duplicate Guard Disabled");
       return;
     }
     const n = parseInt(raw0, 10);
@@ -2687,7 +2924,10 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     cfg.dupGuard.limit = n;
     cfg.dupGuard.action = act;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Duplicate guard set to ${n} repeats (${act}).`);
+    await replyAnimated("lock", "Duplicate Guard Enabled", [
+      `Repeat Limit: <code>${n}</code>`,
+      `Action: <code>${escapeHtml(act)}</code>`
+    ]);
     return;
   }
 
@@ -2699,7 +2939,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.quarantine.seconds = secs;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(secs === 0 ? "New member quarantine disabled." : `New member quarantine set to ${secs}s.`);
+    await replyAnimated("lock", "New Member Quarantine Updated", [
+      `Duration: <code>${secs === 0 ? "OFF" : `${secs}s`}</code>`
+    ]);
     return;
   }
 
@@ -2711,7 +2953,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         const exp = await tgApi(token, "exportChatInviteLink", { chat_id: chatId });
         link = exp?.result || "";
       }
-      await replyAdmin(link ? `Group Invite Link:\n${link}` : "Could not fetch invite link.");
+      await replyAnimated("info", "Group Invite Link", [
+        link ? `<code>${escapeHtml(link)}</code>` : "Could not fetch invite link."
+      ]);
     } catch (err) {
       await replyAdmin(`Invite link failed: ${err.message}`);
     }
@@ -2729,7 +2973,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     else set.delete(targetCmd);
     cfg.disabledCommands = Array.from(set);
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`${cmd === "/disable" ? "Disabled" : "Enabled"} /${targetCmd} for non-admins.`);
+    await replyAnimated("success", cmd === "/disable" ? "Command Disabled" : "Command Enabled", [
+      `Command: <code>/${escapeHtml(targetCmd)}</code>`
+    ]);
     return;
   }
 
@@ -2747,7 +2993,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       return;
     }
     await saveChatConfig(chatId, getDefaultChatConfig());
-    await replyAdmin("Chat configuration reset to defaults.");
+    await replyAnimated("success", "Chat Configuration Reset to Defaults");
     return;
   }
 
@@ -2766,16 +3012,20 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     };
     const score = computeAdminScore(stats);
     const badge = getAdminRankBadge(score);
-    await replyAdmin(
-      `🛡️ Admin Activity (${stats.name || `ID ${statId}`})\nRank: ${badge} (${score} pts)\nMessages: ${stats.messages || 0}\nBans: ${(stats.ban || 0) + (stats.tban || 0)} | Mutes: ${(stats.mute || 0) + (stats.tmute || 0)} | Kicks: ${stats.kick || 0} | Warns: ${stats.warn || 0}`
-    );
+    await replyAnimated("info", "Admin Activity Stats", [
+      `Admin: <b>${escapeHtml(stats.name || `ID ${statId}`)}</b>`,
+      `Rank: <b>${escapeHtml(badge)}</b> (<code>${score} pts</code>)`,
+      `Messages: <code>${stats.messages || 0}</code>`,
+      `Bans: <code>${(stats.ban || 0) + (stats.tban || 0)}</code> • Mutes: <code>${(stats.mute || 0) + (stats.tmute || 0)}</code>`,
+      `Kicks: <code>${stats.kick || 0}</code> • Warns: <code>${stats.warn || 0}</code>`
+    ]);
     return;
   }
 
   if (cmd === "/resetmodstats") {
     cfg.modStats = {};
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Admin activity & moderation rankings reset.");
+    await replyAnimated("success", "Admin Activity & Rankings Reset");
     return;
   }
 
@@ -2788,7 +3038,10 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.watchlist[String(target.id)] = noteText;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Watchlist note saved for ${target.label}.`);
+    await replyAnimated("note", "Watchlist Note Saved", [
+      `User: <b>${escapeHtml(target.label)}</b>`,
+      `Note: <i>${escapeHtml(noteText)}</i>`
+    ]);
     return;
   }
 
@@ -2800,7 +3053,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     delete cfg.watchlist[String(target.id)];
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Removed watchlist note for ${target.label}.`);
+    await replyAnimated("success", "Watchlist Note Removed", [`User: <b>${escapeHtml(target.label)}</b>`]);
     return;
   }
 
@@ -2815,9 +3068,13 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const wNote = cfg.watchlist?.[String(target.id)] || "None";
     const kPts = cfg.karma?.[String(target.id)]?.points || 0;
     const mMsgs = cfg.memberStats?.[String(target.id)]?.messages || 0;
-    await replyAdmin(
-      `User Check (${target.label}):\nID: ${target.id}\nApproved: ${isApp ? "Yes" : "No"}\nMessages: ${mMsgs}\nKarma: ${kPts} pts (${getKarmaRankBadge(kPts)})\nWarnings: ${wList.length}/${cfg.warnings.limit}\nWatchlist: ${wNote}`
-    );
+    await replyAnimated("info", "User Inspection Report", [
+      `User: <b>${escapeHtml(target.label)}</b> (<code>${target.id}</code>)`,
+      `Approved: <code>${isApp ? "Yes" : "No"}</code>`,
+      `Messages: <code>${mMsgs}</code> • Karma: <code>${kPts} pts</code>`,
+      `Warnings: <code>${wList.length}/${cfg.warnings.limit}</code>`,
+      `Watchlist: <i>${escapeHtml(wNote)}</i>`
+    ]);
     return;
   }
 
@@ -2842,6 +3099,13 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         is_anonymous: true,
         allows_multiple_answers: false,
       });
+      await safeSend(
+        token,
+        chatId,
+        formatPollAnnouncement(question, options, true, false),
+        undefined,
+        adminMsgId
+      );
     } catch (err) {
       await replyAdmin(`Poll failed: ${err.message}`);
     }
@@ -2859,7 +3123,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         chat_id: chatId,
         message_id: targetMsgId,
       });
-      await replyAdmin("Poll stopped.");
+      await replyAnimated("poll", "Poll Closed");
     } catch (err) {
       await replyAdmin(`Stop poll failed: ${err.message}`);
     }
@@ -2890,7 +3154,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         can_promote_members: false,
       });
       adminCache.delete(chatId);
-      await replyAdmin(`${isPromo ? "Promoted" : "Demoted"} ${target.label}.`);
+      await replyAnimated("success", isPromo ? "Member Promoted to Admin" : "Admin Demoted", [
+        `User: <b>${escapeHtml(target.label)}</b>`
+      ]);
     } catch (err) {
       await replyAdmin(`${isPromo ? "Promote" : "Demote"} failed: ${err.message}`);
     }
@@ -2916,7 +3182,10 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         custom_title: titleStr.slice(0, 16),
       });
       adminCache.delete(chatId);
-      await replyAdmin(`Updated title for ${target.label} to "${titleStr.slice(0, 16)}".`);
+      await replyAnimated("success", "Admin Title Updated", [
+        `User: <b>${escapeHtml(target.label)}</b>`,
+        `Title: <b>${escapeHtml(titleStr.slice(0, 16))}</b>`
+      ]);
     } catch (err) {
       await replyAdmin(`Title update failed: ${err.message}`);
     }
@@ -2925,7 +3194,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
 
   if (cmd === "/admincache") {
     await getChatAdminsCached(token, chatId, true);
-    await replyAdmin("Admin cache refreshed.");
+    await replyAnimated("success", "Admin Cache Refreshed");
     return;
   }
 
@@ -2937,7 +3206,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.anonAdmin = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Anonymous admin bypass set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("success", "Anonymous Admin Bypass Updated", [
+      `Status: <code>${flag ? "ON" : "OFF"}</code>`
+    ]);
     return;
   }
 
@@ -2949,7 +3220,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.adminError = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Admin error messages set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("success", "Admin Error Notices Updated", [
+      `Status: <code>${flag ? "ON" : "OFF"}</code>`
+    ]);
     return;
   }
 
@@ -2961,7 +3234,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.reportsEnabled = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Reports set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("success", "Reports Setting Updated", [
+      `Status: <code>${flag ? "ON" : "OFF"}</code>`
+    ]);
     return;
   }
 
@@ -2971,7 +3246,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       cfg.raid.enabled = true;
       cfg.raid.untilTs = Date.now() + dur * 1000;
       await saveChatConfig(chatId, cfg);
-      await replyAdmin(`Raid mode enabled for ${dur}s.`);
+      await replyAnimated("lock", "Raid Mode Enabled", [`Duration: <code>${dur}s</code>`]);
       return;
     }
     const flag = parseBoolFlag(cmdArgs[0]);
@@ -2982,7 +3257,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     cfg.raid.enabled = flag;
     cfg.raid.untilTs = flag ? Date.now() + (cfg.raid.actionSeconds || 600) * 1000 : 0;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Raid mode ${flag ? "enabled" : "disabled"}.`);
+    await replyAnimated(flag ? "lock" : "unlock", `Raid Mode ${flag ? "Enabled" : "Disabled"}`);
     return;
   }
 
@@ -2991,7 +3266,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     if (["0", "off", "no"].includes(val)) {
       cfg.raid.autoThreshold = 0;
       await saveChatConfig(chatId, cfg);
-      await replyAdmin("Auto-raid disabled.");
+      await replyAnimated("unlock", "Auto-Raid Disabled");
       return;
     }
     const n = parseInt(val, 10);
@@ -3001,7 +3276,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.raid.autoThreshold = n;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Auto-raid threshold set to ${n} joins.`);
+    await replyAnimated("lock", "Auto-Raid Threshold Set", [`Trigger: <code>${n} joins</code>`]);
     return;
   }
 
@@ -3013,7 +3288,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.raid.actionSeconds = secs;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Raid action duration set to ${secs}s.`);
+    await replyAnimated("success", "Raid Action Duration Updated", [`Duration: <code>${secs}s</code>`]);
     return;
   }
 
@@ -3028,7 +3303,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         chat_id: chatId,
         slow_mode_delay: Math.min(secs, 21600),
       });
-      await replyAdmin(secs === 0 ? "Slow mode disabled." : `Slow mode set to ${secs}s.`);
+      await replyAnimated("info", "Slow Mode Updated", [
+        `Delay: <code>${secs === 0 ? "OFF" : `${secs}s`}</code>`
+      ]);
     } catch (err) {
       await replyAdmin(`Slow mode failed: ${err.message}`);
     }
@@ -3038,14 +3315,15 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/nightmode") {
     const flag = parseBoolFlag(cmdArgs[0]);
     if (flag === null) {
-      await replyAdmin(
-        `Night mode is ${cfg.nightMode.enabled ? "on" : "off"} (${cfg.nightMode.startHHMM} - ${cfg.nightMode.endHHMM} UTC).`
-      );
+      await replyAnimated("info", "Night Mode Status", [
+        `Status: <code>${cfg.nightMode.enabled ? "ON" : "OFF"}</code>`,
+        `Window: <code>${cfg.nightMode.startHHMM} - ${cfg.nightMode.endHHMM} UTC</code>`
+      ]);
       return;
     }
     cfg.nightMode.enabled = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Night mode set to ${flag ? "on" : "off"}.`);
+    await replyAnimated(flag ? "lock" : "unlock", `Night Mode ${flag ? "Enabled" : "Disabled"}`);
     return;
   }
 
@@ -3060,7 +3338,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     cfg.nightMode.endHHMM = cmdArgs[1].padStart(5, "0");
     cfg.nightMode.enabled = true;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Night mode window set to ${cfg.nightMode.startHHMM} - ${cfg.nightMode.endHHMM} UTC.`);
+    await replyAnimated("lock", "Night Mode Schedule Set", [
+      `Window: <code>${cfg.nightMode.startHHMM} - ${cfg.nightMode.endHHMM} UTC</code>`
+    ]);
     return;
   }
 
@@ -3090,7 +3370,10 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       },
     });
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Approved ${target.label}. Locks and restrictions will not apply.`);
+    await replyAnimated("success", "Member Approved", [
+      `User: <b>${escapeHtml(target.label)}</b>`,
+      `Note: <i>Exempt from locks &amp; spam guards</i>`
+    ]);
     return;
   }
 
@@ -3102,7 +3385,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.approvedUsers = cfg.approvedUsers.filter((id) => id !== target.id);
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Unapproved ${target.label}.`);
+    await replyAnimated("info", "Approval Removed", [`User: <b>${escapeHtml(target.label)}</b>`]);
     return;
   }
 
@@ -3116,7 +3399,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
   if (cmd === "/unapproveall") {
     cfg.approvedUsers = [];
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("All users unapproved.");
+    await replyAnimated("success", "All Approvals Cleared");
     return;
   }
 
@@ -3125,7 +3408,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     if (["0", "off", "no"].includes(val)) {
       cfg.flood.limit = 0;
       await saveChatConfig(chatId, cfg);
-      await replyAdmin("Antiflood disabled.");
+      await replyAnimated("unlock", "Antiflood Disabled");
       return;
     }
     const n = parseInt(val, 10);
@@ -3135,7 +3418,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.flood.limit = n;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Antiflood set to ${n} messages.`);
+    await replyAnimated("lock", "Antiflood Limit Set", [`Limit: <code>${n} consecutive messages</code>`]);
     return;
   }
 
@@ -3144,7 +3427,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       cfg.flood.timerCount = 0;
       cfg.flood.timerSeconds = 0;
       await saveChatConfig(chatId, cfg);
-      await replyAdmin("Timed antiflood disabled.");
+      await replyAnimated("unlock", "Timed Antiflood Disabled");
       return;
     }
     const count = parseInt(cmdArgs[0], 10);
@@ -3156,7 +3439,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     cfg.flood.timerCount = count;
     cfg.flood.timerSeconds = secs;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Timed antiflood set to ${count} msgs / ${secs}s.`);
+    await replyAnimated("lock", "Timed Antiflood Set", [`Rate: <code>${count} msgs / ${secs}s</code>`]);
     return;
   }
 
@@ -3174,7 +3457,10 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     cfg.flood.action = m;
     cfg.flood.durationSeconds = dur || 0;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Flood mode set to ${m}${dur ? ` (${dur}s)` : ""}.`);
+    await replyAnimated("success", "Flood Action Mode Updated", [
+      `Action: <code>${escapeHtml(m)}</code>`,
+      ...(dur ? [`Duration: <code>${dur}s</code>`] : [])
+    ]);
     return;
   }
 
@@ -3186,7 +3472,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.flood.clearFlood = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Clear flood set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("purge", "Clear Flood Updated", [`Status: <code>${flag ? "ON" : "OFF"}</code>`]);
     return;
   }
 
@@ -3201,7 +3487,10 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     cfg.blocklists = cfg.blocklists.filter((b) => b.trigger !== trigger);
     cfg.blocklists.push({ trigger, reason });
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Added blocklist trigger: ${trigger}`);
+    await replyAnimated("lock", "Blocklist Trigger Added", [
+      `Trigger: <code>${escapeHtml(trigger)}</code>`,
+      ...(reason ? [`Reason: <i>${escapeHtml(reason)}</i>`] : [])
+    ]);
     return;
   }
 
@@ -3212,7 +3501,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.blocklists = cfg.blocklists.filter((b) => b.trigger !== cmdArgsStr);
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Removed blocklist trigger: ${cmdArgsStr}`);
+    await replyAnimated("unlock", "Blocklist Trigger Removed", [`Trigger: <code>${escapeHtml(cmdArgsStr)}</code>`]);
     return;
   }
 
@@ -3225,7 +3514,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.blocklists = [];
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Cleared all blocklists.");
+    await replyAnimated("success", "All Blocklist Triggers Cleared");
     return;
   }
 
@@ -3237,7 +3526,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.blocklistMode = m;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Blocklist mode set to ${m}.`);
+    await replyAnimated("success", "Blocklist Mode Updated", [`Mode: <code>${escapeHtml(m)}</code>`]);
     return;
   }
 
@@ -3249,21 +3538,21 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.blocklistDelete = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Blocklist message deletion set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("purge", "Blocklist Auto-Delete Updated", [`Status: <code>${flag ? "ON" : "OFF"}</code>`]);
     return;
   }
 
   if (cmd === "/setblocklistreason") {
     cfg.blocklistReason = cmdArgsStr;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Default blocklist reason updated.");
+    await replyAnimated("success", "Default Blocklist Reason Updated");
     return;
   }
 
   if (cmd === "/resetblocklistreason") {
     cfg.blocklistReason = "";
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Default blocklist reason reset.");
+    await replyAnimated("success", "Default Blocklist Reason Reset");
     return;
   }
 
@@ -3275,7 +3564,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.cleanCommands = Array.from(new Set([...cfg.cleanCommands, ...valid]));
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Clean command types: ${cfg.cleanCommands.join(", ")}`);
+    await replyAnimated("purge", "Clean Command Types Updated", [
+      `Active: <code>${escapeHtml(cfg.cleanCommands.join(", "))}</code>`
+    ]);
     return;
   }
 
@@ -3283,7 +3574,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const toRemove = cmdArgs.map((t) => t.toLowerCase());
     cfg.cleanCommands = cfg.cleanCommands.filter((t) => !toRemove.includes(t));
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Active clean command types: ${cfg.cleanCommands.join(", ") || "none"}`);
+    await replyAnimated("purge", "Clean Command Types Updated", [
+      `Active: <code>${escapeHtml(cfg.cleanCommands.join(", ") || "none")}</code>`
+    ]);
     return;
   }
 
@@ -3295,7 +3588,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.lockWarns = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Lock warnings set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("warn", "Lock Warnings Updated", [`Status: <code>${flag ? "ON" : "OFF"}</code>`]);
     return;
   }
 
@@ -3315,7 +3608,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
           else delete cfg.lockConfig[it];
         }
         await saveChatConfig(chatId, cfg);
-        await replyAdmin("Reset custom lock action/reason.");
+        await replyAnimated("unlock", "Custom Lock Rules Reset");
         return;
       }
       const actMatch = trimmedRight.match(/\{(ban|mute|kick|tban|tmute|warn)\}/i);
@@ -3331,7 +3624,11 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         cfg.lockConfig[it] = { action, reason, durationSeconds: 0 };
       }
       await saveChatConfig(chatId, cfg);
-      await replyAdmin(`Locked ${validCustom.join(", ")} with custom action/reason.`);
+      await replyAnimated("lock", "Custom Lock Applied", [
+        `Locked: <code>${escapeHtml(validCustom.join(", "))}</code>`,
+        ...(action ? [`Action: <code>${escapeHtml(action)}</code>`] : []),
+        ...(reason ? [`Reason: <i>${escapeHtml(reason)}</i>`] : [])
+      ]);
       return;
     }
 
@@ -3342,7 +3639,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     for (const it of items) cfg.locks[it] = true;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Locked: ${items.join(", ")}`);
+    await replyAnimated("lock", "Content Locked", [`Types: <code>${escapeHtml(items.join(", "))}</code>`]);
     return;
   }
 
@@ -3354,7 +3651,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     for (const it of items) delete cfg.locks[it];
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Unlocked: ${items.join(", ")}`);
+    await replyAnimated("unlock", "Content Unlocked", [`Types: <code>${escapeHtml(items.join(", "))}</code>`]);
     return;
   }
 
@@ -3376,21 +3673,21 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       }
     }
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Allowlist updated.");
+    await replyAnimated("success", "Allowlist Updated");
     return;
   }
 
   if (cmd === "/rmallowlist") {
     cfg.allowlist = cfg.allowlist.filter((it) => !cmdArgs.includes(it));
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Removed specified items from allowlist.");
+    await replyAnimated("success", "Removed Items from Allowlist");
     return;
   }
 
   if (cmd === "/rmallowlistall") {
     cfg.allowlist = [];
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Cleared all allowlisted items.");
+    await replyAnimated("success", "Allowlist Cleared");
     return;
   }
 
@@ -3419,7 +3716,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       else filters.push(entry);
     }
     await storeSet(`filters_v2:${chatId}`, filters);
-    await replyAdmin(`Filter saved: ${triggers.join(", ")}`);
+    await replyAnimated("filter", "Filter Saved", [`Triggers: <code>${escapeHtml(triggers.join(", "))}</code>`]);
     return;
   }
 
@@ -3431,7 +3728,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const filters = (await storeGet(`filters_v2:${chatId}`)) || [];
     const next = filters.filter((f) => f.trigger !== cmdArgsStr);
     await storeSet(`filters_v2:${chatId}`, next);
-    await replyAdmin(`Filter removed: ${cmdArgsStr}`);
+    await replyAnimated("filter", "Filter Removed", [`Trigger: <code>${escapeHtml(cmdArgsStr)}</code>`]);
     return;
   }
 
@@ -3465,7 +3762,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       ? { content: finalContent, media: pickedMedia }
       : finalContent;
     await storeSet(`notes:${chatId}`, notes);
-    await replyAdmin(`Note saved as #${noteName}`);
+    await replyAnimated("note", "Note Saved", [`Shortcut: <code>#${escapeHtml(noteName)}</code>`]);
     return;
   }
 
@@ -3478,7 +3775,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     const notes = (await storeGet(`notes:${chatId}`)) || {};
     delete notes[noteName];
     await storeSet(`notes:${chatId}`, notes);
-    await replyAdmin(`Note #${noteName} deleted.`);
+    await replyAnimated("note", "Note Deleted", [`Shortcut: <code>#${escapeHtml(noteName)}</code>`]);
     return;
   }
 
@@ -3495,7 +3792,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.greetings.welcomeEnabled = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Welcome messages ${flag ? "enabled" : "disabled"}.`);
+    await replyAnimated("success", `Welcome Messages ${flag ? "Enabled" : "Disabled"}`);
     return;
   }
 
@@ -3512,7 +3809,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.greetings.goodbyeEnabled = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Goodbye messages ${flag ? "enabled" : "disabled"}.`);
+    await replyAnimated("success", `Goodbye Messages ${flag ? "Enabled" : "Disabled"}`);
     return;
   }
 
@@ -3524,7 +3821,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.greetings.cleanWelcome = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Clean welcome set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("purge", "Clean Welcome Updated", [`Status: <code>${flag ? "ON" : "OFF"}</code>`]);
     return;
   }
 
@@ -3559,7 +3856,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
 
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`${isWel ? "Welcome" : "Goodbye"} message updated and enabled.`);
+    await replyAnimated("success", `${isWel ? "Welcome" : "Goodbye"} Message Updated & Enabled`);
     return;
   }
 
@@ -3573,7 +3870,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       cfg.greetings.goodbyeMedia = null;
     }
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`${cmd === "/resetwelcome" ? "Welcome" : "Goodbye"} message reset.`);
+    await replyAnimated("success", `${cmd === "/resetwelcome" ? "Welcome" : "Goodbye"} Message Reset`);
     return;
   }
 
@@ -3595,7 +3892,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         message_id: targetMsgId,
         disable_notification: silent,
       });
-      await replyAdmin("Message pinned.");
+      await replyAnimated("success", "Message Pinned");
     } catch (err) {
       await replyAdmin(`Pin failed: ${err.message}`);
     }
@@ -3647,7 +3944,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
         "unpinChatMessage",
         targetMsgId ? { chat_id: chatId, message_id: targetMsgId } : { chat_id: chatId }
       );
-      await replyAdmin("Message unpinned.");
+      await replyAnimated("success", "Message Unpinned");
     } catch (err) {
       await replyAdmin(`Unpin failed: ${err.message}`);
     }
@@ -3662,7 +3959,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     try {
       await tgApi(token, "unpinAllChatMessages", { chat_id: chatId });
-      await replyAdmin("Unpinned all messages.");
+      await replyAnimated("success", "All Pinned Messages Cleared");
     } catch (err) {
       await replyAdmin(`Unpinall failed: ${err.message}`);
     }
@@ -3681,7 +3978,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.pin.antiChannelPin = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Anti-channel pin set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("success", "Anti-Channel Pin Updated", [
+      `Status: <code>${flag ? "ON" : "OFF"}</code>`
+    ]);
     return;
   }
 
@@ -3693,7 +3992,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.pin.cleanLinked = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Clean linked channel set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("purge", "Clean Linked Channel Updated", [
+      `Status: <code>${flag ? "ON" : "OFF"}</code>`
+    ]);
     return;
   }
 
@@ -3716,7 +4017,9 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       return;
     }
     purgeFromState.set(chatId, message.reply_to_message.message_id);
-    await replyAdmin(`Marked message ${message.reply_to_message.message_id} as purge start.`);
+    await replyAnimated("purge", "Purge Start Marked", [
+      `Message ID: <code>${message.reply_to_message.message_id}</code>`
+    ]);
     return;
   }
 
@@ -3738,7 +4041,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     for (let id = from; id <= Math.min(to, from + 100); id++) ids.push(id);
     if (ids.length) await safeTgApi(token, "deleteMessages", { chat_id: chatId, message_ids: ids });
     purgeFromState.delete(chatId);
-    await replyAdmin(`Purged ${ids.length} messages.`);
+    await replyAnimated("purge", "Range Purge Complete", [`Deleted: <code>${ids.length} messages</code>`]);
     return;
   }
 
@@ -3760,7 +4063,11 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     if (ids.length) await safeTgApi(token, "deleteMessages", { chat_id: chatId, message_ids: ids });
     await safeTgApi(token, "deleteMessage", { chat_id: chatId, message_id: adminMsgId });
     if (cmd === "/purge") {
-      await safeSend(token, chatId, `<b>${escapeHtml(`Purged ${ids.length} messages.`)}</b>`);
+      await safeSend(
+        token,
+        chatId,
+        formatAnimatedOutcome("purge", "Messages Purged", [`Cleared: <code>${ids.length} messages</code>`])
+      );
     }
     return;
   }
@@ -3772,7 +4079,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.rules.text = cmdArgsStr;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Chat rules updated.");
+    await replyAnimated("success", "Chat Rules Updated");
     return;
   }
 
@@ -3784,14 +4091,14 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.rules.privateRules = flag;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Private rules set to ${flag ? "on" : "off"}.`);
+    await replyAnimated("success", "Private Rules Updated", [`Status: <code>${flag ? "ON" : "OFF"}</code>`]);
     return;
   }
 
   if (cmd === "/resetrules") {
     cfg.rules.text = "";
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Chat rules reset.");
+    await replyAnimated("success", "Chat Rules Reset");
     return;
   }
 
@@ -3802,14 +4109,14 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.rules.buttonText = cmdArgsStr;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Rules button set to "${cmdArgsStr}".`);
+    await replyAnimated("success", "Rules Button Updated", [`Label: <b>${escapeHtml(cmdArgsStr)}</b>`]);
     return;
   }
 
   if (cmd === "/resetrulesbutton") {
     cfg.rules.buttonText = "Rules";
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("Rules button reset to default.");
+    await replyAnimated("success", "Rules Button Reset");
     return;
   }
 
@@ -3827,7 +4134,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     cfg.warnings.mode = m;
     cfg.warnings.durationSeconds = dur || 0;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Warn mode set to ${m}.`);
+    await replyAnimated("warn", "Warn Punishment Mode Set", [`Mode: <code>${escapeHtml(m)}</code>`]);
     return;
   }
 
@@ -3839,7 +4146,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.warnings.limit = n;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(`Warn limit set to ${n}.`);
+    await replyAnimated("warn", "Warn Limit Updated", [`Limit: <code>${n} warnings</code>`]);
     return;
   }
 
@@ -3851,14 +4158,16 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
     }
     cfg.warnings.timeSeconds = secs;
     await saveChatConfig(chatId, cfg);
-    await replyAdmin(secs === 0 ? "Warn expiration disabled." : `Warn expiration set to ${secs}s.`);
+    await replyAnimated("warn", "Warn Expiration Updated", [
+      `Expiry: <code>${secs === 0 ? "OFF" : `${secs}s`}</code>`
+    ]);
     return;
   }
 
   if (cmd === "/resetallwarns") {
     cfg.warnings.clearedAt = Date.now();
     await saveChatConfig(chatId, cfg);
-    await replyAdmin("All warnings cleared.");
+    await replyAnimated("success", "All Group Warnings Cleared");
     return;
   }
 
@@ -3907,14 +4216,14 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
 
       const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tban" : "ban", durSec || 0, reason, logChatId, message.from);
       if (cmd !== "/sban") {
-        await replyAdmin(resText);
+        await safeSend(token, chatId, resText, undefined, adminMsgId);
       }
       return;
     }
 
     if (cmd === "/unban") {
       await tgApi(token, "unbanChatMember", { chat_id: chatId, user_id: target.id, only_if_banned: true });
-      await replyAdmin(`I've unbanned ${target.label}.`);
+      await replyAnimated("unban", "Member Unbanned", [`User: <b>${escapeHtml(target.label)}</b>`]);
       return;
     }
 
@@ -3928,7 +4237,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
       }
       const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, "kick", 0, reason, logChatId, message.from);
       if (cmd !== "/skick") {
-        await replyAdmin(resText);
+        await safeSend(token, chatId, resText, undefined, adminMsgId);
       }
       return;
     }
@@ -3951,7 +4260,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
 
       const resText = await applyPunishment(token, chatId, target.user || { id: target.id, username: target.label }, durSec ? "tmute" : "mute", durSec || 0, reason, logChatId, message.from);
       if (cmd !== "/smute") {
-        await replyAdmin(resText);
+        await safeSend(token, chatId, resText, undefined, adminMsgId);
       }
       return;
     }
@@ -3973,7 +4282,7 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
           can_add_web_page_previews: true,
         },
       });
-      await replyAdmin(`I've unmuted ${target.label}.`);
+      await replyAnimated("unmute", "Member Unmuted", [`User: <b>${escapeHtml(target.label)}</b>`]);
       return;
     }
 
@@ -4005,24 +4314,29 @@ async function runAdminCommand(message, token, cfg, cmd, cmdName, parts, cmdArgs
 
     if (cmd === "/warns") {
       if (!warns.length) {
-        await replyAdmin(`${target.label} has no warnings.`);
+        await replyAnimated("warn", "No Warnings Found", [`User: <b>${escapeHtml(target.label)}</b>`]);
         return;
       }
-      const list = warns.map((w, idx) => `${idx + 1}. ${w.reason}`).join("\n");
-      await replyAdmin(`Warnings for ${target.label} (${warns.length}/${cfg.warnings.limit}):\n${list}`);
+      const list = warns.map((w, idx) => `<code>${idx + 1}.</code> ${escapeHtml(w.reason)}`).join("\n");
+      await replyAnimated("warn", `Warnings (${warns.length}/${cfg.warnings.limit})`, [
+        `User: <b>${escapeHtml(target.label)}</b>`,
+        list
+      ]);
       return;
     }
 
     if (cmd === "/rmwarn") {
       warns.pop();
       await storeSet(warnKey, warns);
-      await replyAdmin(`Latest warning removed (${warns.length}/${cfg.warnings.limit}).`);
+      await replyAnimated("success", "Latest Warning Removed", [
+        `Remaining: <code>${warns.length}/${cfg.warnings.limit}</code>`
+      ]);
       return;
     }
 
     if (cmd === "/resetwarn") {
       await storeSet(warnKey, []);
-      await replyAdmin(`All warnings cleared for ${target.label}.`);
+      await replyAnimated("success", "User Warnings Cleared", [`User: <b>${escapeHtml(target.label)}</b>`]);
     }
   } catch (err) {
     await replyAdmin(`Action failed: ${err.message}`);
