@@ -48,15 +48,14 @@ async function handleJoinRequest(joinReq, token) {
   });
 
   if (approved?.ok) {
-    const firstName = escapeHtml(user.first_name || "there");
     const chatTitle = escapeHtml(joinReq.chat?.title || "the group");
 
     await safeTgApi(token, "sendMessage", {
       chat_id: userId,
       text: [
-        `Hey <b>${firstName}</b>! Your join request for <b>${chatTitle}</b> has been approved.`,
+        `Hᴇʏ ! Yᴏᴜʀ ᴊᴏɪɴ ʀᴇQᴜᴇꜱᴛ ꜰᴏʀ <b>${chatTitle}</b>  ʜᴀꜱ ʙᴇᴇɴ ᴀᴘᴘʀᴏᴠᴇᴅ.`,
         "",
-        `Explore our official channels below:`,
+        `Exᴘʟᴏʀᴇ ᴏᴜʀ ᴏꜰꜰɪᴄɪᴀʟ ᴄʜᴀɴɴᴇʟꜱ ʙᴇʟᴏᴡ👇🏻`,
       ].join("\n"),
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
@@ -108,3 +107,4 @@ async function tgApi(token, method, body) {
   }
   return data;
 }
+
