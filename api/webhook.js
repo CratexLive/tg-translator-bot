@@ -56,13 +56,26 @@ async function handleJoinRequest(joinReq, token) {
       text: [
         `Hey <b>${firstName}</b>! Your join request for <b>${chatTitle}</b> has been approved.`,
         "",
-        `Join our all channel for links and updates`,
-        `https://t.me/addlist/BY7LjD-KUlwyMDY1`,
-        "",
-        `Join our football channel`,
-        `https://t.me/+LQiE7McsrF44MTZl`,
+        `Explore our official channels below:`,
       ].join("\n"),
       parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "All Channels • Links & Updates",
+              url: "https://t.me/addlist/BY7LjD-KUlwyMDY1",
+            },
+          ],
+          [
+            {
+              text: "Football Channel",
+              url: "https://t.me/+LQiE7McsrF44MTZl",
+            },
+          ],
+        ],
+      },
     });
   }
 }
