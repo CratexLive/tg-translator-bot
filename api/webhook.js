@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 const TSDB_BASE = "https://www.thesportsdb.com";
 const TSDB_API_BASE = "https://www.thesportsdb.com/api/v1/json/3";
+const MAX_DIRECT_PHOTOS = 6;
 
 const DEFAULT_HEADERS = {
   "User-Agent":
@@ -37,10 +38,6 @@ function esc(val) {
     .replace(/"/g, "&quot;");
 }
 
-function makeId(str) {
-  return crypto.createHash("sha1").update(String(str)).digest("hex").slice(0, 14);
-}
-
 function resolveUrl(href) {
   const raw = String(href || "").trim();
   if (!raw) return "";
@@ -63,10 +60,12 @@ function stripTags(html) {
     .trim();
 }
 
-function normalizeImageAsset(url) {
+function normalizeThumb16x9(url) {
   const clean = resolveUrl(url);
   if (!clean) return "";
-  // Strip /preview or /tiny suffix if present so full asset loads
+  if (/\/images\/media\/event\/(poster|square|banner)\//i.test(clean)) {
+    return "";
+  }
   return clean.replace(/\/(preview|tiny|small)$/i, "");
 }
 
@@ -90,7 +89,6 @@ function extractBrowseEventsFromHtml(html) {
   const results = [];
   const seen = new Set();
 
-  // Focus on the Events section if present
   const eventsSectionMatch = html.match(/Events<\/h\d>([\s\S]*?)(?:<h\d|<footer|$)/i);
   const scopeHtml = eventsSectionMatch ? eventsSectionMatch[1] : html;
 
@@ -104,7 +102,7 @@ function extractBrowseEventsFromHtml(html) {
     const imgMatch =
       inner.match(/data-src=["']([^"']+)["']/i) ||
       inner.match(/src=["']([^"']+)["']/i);
-    const thumbUrl = normalizeImageAsset(imgMatch?.[1] || "");
+    const thumbUrl = normalizeThumb16x9(imgMatch?.[1] || "");
 
     const titleText = stripTags(inner)
       .replace(/^[^a-zA-Z0-9]+/, "")
@@ -116,18 +114,14 @@ function extractBrowseEventsFromHtml(html) {
 
     seen.add(eventUrl.toLowerCase());
     results.push({
-      id: makeId(`ev:${eventUrl}`),
       title: titleText,
       date: dateStr,
       league: "",
       eventUrl,
-      thumb: thumbUrl,
-      poster: "",
-      square: "",
-      banner: "",
+      thumb16x9: thumbUrl,
     });
 
-    if (results.length >= 25) break;
+    if (results.length >= 20) break;
   }
 
   return results;
@@ -137,14 +131,13 @@ async function searchEventsFromApi(query) {
   const cleanQ = String(query || "").trim();
   if (!cleanQ) return [];
 
-  // TheSportsDB API expects underscores for spaces in searchevents.php
   const formatted = cleanQ.replace(/\s+/g, "_");
   const apiUrl = `${TSDB_API_BASE}/searchevents.php?e=${encodeURIComponent(formatted)}`;
 
   try {
     const json = await fetchResource(apiUrl, true);
     const events = Array.isArray(json?.event) ? json.event : [];
-    return events.slice(0, 25).map((ev) => {
+    return events.slice(0, 20).map((ev) => {
       const eventId = String(ev?.idEvent || "").trim();
       const name = String(ev?.strEvent || "").trim();
       const dateStr = String(ev?.dateEvent || "").trim();
@@ -152,18 +145,16 @@ async function searchEventsFromApi(query) {
       const league = String(ev?.strLeague || "").trim();
       const title = dateStr ? `${name} (${dateStr})` : name;
       const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const eventUrl = eventId ? `${TSDB_BASE}/event/${eventId}${slug ? `-${slug}` : ""}` : TSDB_BASE;
+      const eventUrl = eventId
+        ? `${TSDB_BASE}/event/${eventId}${slug ? `-${slug}` : ""}`
+        : TSDB_BASE;
 
       return {
-        id: makeId(`api:${eventId || title}`),
         title,
         date: timeStr ? `${dateStr} • ${timeStr} UTC` : dateStr,
         league,
         eventUrl,
-        thumb: normalizeImageAsset(ev?.strThumb || ""),
-        poster: normalizeImageAsset(ev?.strPoster || ""),
-        square: normalizeImageAsset(ev?.strSquare || ""),
-        banner: normalizeImageAsset(ev?.strBanner || ""),
+        thumb16x9: normalizeThumb16x9(ev?.strThumb || ""),
       };
     });
   } catch {
@@ -171,7 +162,32 @@ async function searchEventsFromApi(query) {
   }
 }
 
-async function searchTheSportsDB(query) {
+async function resolveEventThumb16x9(evItem) {
+  if (evItem.thumb16x9) return evItem;
+  if (!evItem?.eventUrl || evItem.eventUrl === TSDB_BASE) return evItem;
+
+  try {
+    const html = await fetchResource(evItem.eventUrl, false);
+    const thumbMatch = html.match(
+      /https?:\/\/r2\.thesportsdb\.com\/images\/media\/event\/thumb\/[^\s"'<>]+/i
+    );
+    const dateBlockMatch =
+      html.match(/Date\s*&amp;\s*Time<\/h\d>\s*<[^>]+>([^<]+)</i) ||
+      html.match(
+        /Date\s*&\s*Time[\s\S]{0,120}?([A-Za-z]{3}\s+\d{1,2}[a-z]{2}\s+[A-Za-z]+\s+\d{4}\s+\d{1,2}:\d{2}[ap]m\s+UTC)/i
+      );
+
+    return {
+      ...evItem,
+      thumb16x9: normalizeThumb16x9(thumbMatch?.[0] || ""),
+      date: dateBlockMatch?.[1]?.trim() || evItem.date,
+    };
+  } catch {
+    return evItem;
+  }
+}
+
+async function searchDirect16x9Thumbnails(query) {
   const cleanQ = String(query || "").trim();
   if (!cleanQ) return [];
 
@@ -185,94 +201,42 @@ async function searchTheSportsDB(query) {
     htmlRes.status === "fulfilled" ? extractBrowseEventsFromHtml(htmlRes.value) : [];
   const apiEvents = apiRes.status === "fulfilled" ? apiRes.value : [];
 
-  if (!htmlEvents.length) return apiEvents;
+  const merged = htmlEvents.length ? htmlEvents : apiEvents;
 
-  // Merge API artwork fields into HTML browse results where titles/dates match
-  for (const hEv of htmlEvents) {
-    const baseName = hEv.title.replace(/\(\d{4}-\d{2}-\d{2}\)/g, "").trim().toLowerCase();
-    const matchApi = apiEvents.find((aEv) => {
-      const aBase = aEv.title.replace(/\(\d{4}-\d{2}-\d{2}\)/g, "").trim().toLowerCase();
-      return aBase === baseName && (!hEv.date || aEv.date.startsWith(hEv.date));
-    });
-    if (matchApi) {
-      hEv.thumb = hEv.thumb || matchApi.thumb;
-      hEv.poster = matchApi.poster;
-      hEv.square = matchApi.square;
-      hEv.banner = matchApi.banner;
-      hEv.league = matchApi.league;
-      if (matchApi.date) hEv.date = matchApi.date;
+  if (htmlEvents.length && apiEvents.length) {
+    for (const hEv of merged) {
+      const baseName = hEv.title.replace(/\(\d{4}-\d{2}-\d{2}\)/g, "").trim().toLowerCase();
+      const matchApi = apiEvents.find((aEv) => {
+        const aBase = aEv.title.replace(/\(\d{4}-\d{2}-\d{2}\)/g, "").trim().toLowerCase();
+        return aBase === baseName && (!hEv.date || aEv.date.startsWith(hEv.date));
+      });
+      if (matchApi) {
+        hEv.thumb16x9 = hEv.thumb16x9 || matchApi.thumb16x9;
+        hEv.league = matchApi.league || hEv.league;
+        if (matchApi.date) hEv.date = matchApi.date;
+      }
     }
   }
 
-  return htmlEvents;
+  const withThumbs = [];
+  const seenUrls = new Set();
+
+  for (const item of merged.slice(0, 12)) {
+    const resolved = await resolveEventThumb16x9(item);
+    if (!resolved.thumb16x9) continue;
+    if (seenUrls.has(resolved.thumb16x9)) continue;
+    seenUrls.add(resolved.thumb16x9);
+    withThumbs.push(resolved);
+    if (withThumbs.length >= MAX_DIRECT_PHOTOS) break;
+  }
+
+  return withThumbs;
 }
 
-async function enrichEventArtwork(evItem) {
-  if (!evItem?.eventUrl || evItem.eventUrl === TSDB_BASE) return evItem;
-  if (evItem.poster && evItem.thumb && evItem.square) return evItem;
-
-  try {
-    const html = await fetchResource(evItem.eventUrl, false);
-
-    const posterMatch = html.match(
-      /https?:\/\/r2\.thesportsdb\.com\/images\/media\/event\/poster\/[^\s"'<>]+/i
-    );
-    const thumbMatch = html.match(
-      /https?:\/\/r2\.thesportsdb\.com\/images\/media\/event\/thumb\/[^\s"'<>]+/i
-    );
-    const squareMatch = html.match(
-      /https?:\/\/r2\.thesportsdb\.com\/images\/media\/event\/square\/[^\s"'<>]+/i
-    );
-    const bannerMatch = html.match(
-      /https?:\/\/r2\.thesportsdb\.com\/images\/media\/event\/banner\/[^\s"'<>]+/i
-    );
-
-    const dateBlockMatch = html.match(/Date\s*&amp;\s*Time<\/h\d>\s*<[^>]+>([^<]+)</i) ||
-      html.match(/Date\s*&\s*Time[\s\S]{0,120}?([A-Za-z]{3}\s+\d{1,2}[a-z]{2}\s+[A-Za-z]+\s+\d{4}\s+\d{1,2}:\d{2}[ap]m\s+UTC)/i);
-
-    return {
-      ...evItem,
-      poster: normalizeImageAsset(posterMatch?.[0] || evItem.poster),
-      thumb: normalizeImageAsset(thumbMatch?.[0] || evItem.thumb),
-      square: normalizeImageAsset(squareMatch?.[0] || evItem.square),
-      banner: normalizeImageAsset(bannerMatch?.[0] || evItem.banner),
-      date: dateBlockMatch?.[1]?.trim() || evItem.date,
-    };
-  } catch {
-    return evItem;
-  }
-}
-
-function buildEventListKeyboard(events) {
-  const rows = [];
-  for (const ev of events.slice(0, 25)) {
-    const label = `➔  ${toSmallCaps(ev.title)}`.slice(0, 60);
-    rows.push([{ text: label, callback_data: `tsdb_ev:${ev.id}` }]);
-  }
-  return { inline_keyboard: rows };
-}
-
-function buildArtworkTypeKeyboard(ev) {
-  const rows = [];
-  if (ev.thumb) {
-    rows.push([{ text: `📌  ${toSmallCaps("THUMB (16:9)")}`, callback_data: `tsdb_img:${ev.id}:thumb` }]);
-  }
-  if (ev.poster) {
-    rows.push([{ text: `📌  ${toSmallCaps("POSTER")}`, callback_data: `tsdb_img:${ev.id}:poster` }]);
-  }
-  if (ev.square) {
-    rows.push([{ text: `📌  ${toSmallCaps("SQUARE POSTER")}`, callback_data: `tsdb_img:${ev.id}:square` }]);
-  }
-  if (ev.banner) {
-    rows.push([{ text: `📌  ${toSmallCaps("BANNER")}`, callback_data: `tsdb_img:${ev.id}:banner` }]);
-  }
-  return { inline_keyboard: rows };
-}
-
-function formatEventCaption(ev, assetTypeLabel) {
+function formatCaption(ev) {
   const lines = [
     `📌  <b>${esc(toSmallCaps(ev.title))}</b>`,
-    `➠  ${esc(toSmallCaps("TYPE"))}  ⇢  <b>${esc(toSmallCaps(assetTypeLabel))}</b>`,
+    `➠  ${esc(toSmallCaps("FORMAT"))}  ⇢  <b>${esc(toSmallCaps("16:9 THUMB"))}</b>`,
   ];
   if (ev.date) {
     lines.push(`⏳  ${esc(toSmallCaps("DATE & TIME"))}  ⇢  <code>${esc(ev.date)}</code>`);
@@ -284,37 +248,22 @@ function formatEventCaption(ev, assetTypeLabel) {
   return lines.join("\n\n").slice(0, 1020);
 }
 
-async function sendPhotoAsset(chatId, ev, assetKey) {
+async function sendDirectPhoto(chatId, ev) {
   const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
   if (!token) throw new Error("Missing TELEGRAM_TOKEN");
 
-  const map = {
-    thumb: { url: ev.thumb, label: "THUMB (16:9)" },
-    poster: { url: ev.poster, label: "POSTER" },
-    square: { url: ev.square, label: "SQUARE POSTER" },
-    banner: { url: ev.banner, label: "BANNER" },
-  };
-  const chosen = map[assetKey] || map.thumb;
-  if (!chosen?.url) {
-    await sendText(
-      chatId,
-      `🛑  <b>${esc(toSmallCaps(ev.title))}</b>\n\n➥  ${esc(toSmallCaps("IMAGE NOT AVAILABLE"))}`
-    );
-    return;
-  }
-
-  const buttons = [];
-  if (/^https:\/\//i.test(chosen.url) && chosen.url.length <= 2048) {
-    buttons.push([{ text: `➔  ${toSmallCaps("OPEN FULL IMAGE")}`, url: chosen.url }]);
-  }
-
   const payload = {
     chat_id: chatId,
-    photo: chosen.url,
-    caption: formatEventCaption(ev, chosen.label),
+    photo: ev.thumb16x9,
+    caption: formatCaption(ev),
     parse_mode: "HTML",
   };
-  if (buttons.length) payload.reply_markup = { inline_keyboard: buttons };
+
+  if (/^https:\/\//i.test(ev.thumb16x9) && ev.thumb16x9.length <= 2048) {
+    payload.reply_markup = {
+      inline_keyboard: [[{ text: `➔  ${toSmallCaps("OPEN FULL IMAGE")}`, url: ev.thumb16x9 }]],
+    };
+  }
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
     method: "POST",
@@ -328,145 +277,34 @@ async function sendPhotoAsset(chatId, ev, assetKey) {
       chatId,
       [
         `📌  <b>${esc(toSmallCaps(ev.title))}</b>`,
-        `➠  ${esc(toSmallCaps("IMAGE URL"))}  ⇢  <code>${esc(chosen.url)}</code>`,
-      ].join("\n\n"),
-      buttons.length ? { inline_keyboard: buttons } : null
+        `➠  ${esc(toSmallCaps("IMAGE URL"))}  ⇢  <code>${esc(ev.thumb16x9)}</code>`,
+      ].join("\n\n")
     );
   }
 }
 
-async function sendText(chatId, text, replyMarkup = null) {
+async function sendText(chatId, text) {
   const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
   if (!token) throw new Error("Missing TELEGRAM_TOKEN");
 
-  const payload = {
-    chat_id: chatId,
-    text: String(text).slice(0, 4090),
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
-  };
-  if (replyMarkup) payload.reply_markup = replyMarkup;
-
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.ok) {
-    throw new Error(data?.description || `Telegram sendMessage ${res.status}`);
-  }
-}
-
-async function answerCallback(id, text = "", alert = false) {
-  const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
-  if (!token || !id) return;
-
-  await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      callback_query_id: id,
-      text: String(text).slice(0, 195),
-      show_alert: alert,
+      chat_id: chatId,
+      text: String(text).slice(0, 4090),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
     }),
   }).catch(() => {});
 }
 
-const sessionCache = new Map();
-
-function saveSession(key, value) {
-  sessionCache.set(key, { value, exp: Date.now() + 15 * 60 * 1000 });
-}
-
-function getSession(key) {
-  const entry = sessionCache.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.exp) {
-    sessionCache.delete(key);
-    return null;
-  }
-  return entry.value;
-}
-
 export default async function handler(req, res) {
-  if (req.method === "GET") return res.status(200).send("TheSportsDB Thumbnail Bot Active");
+  if (req.method === "GET") return res.status(200).send("TheSportsDB Direct 16:9 Bot Active");
   if (req.method !== "POST") return res.status(405).end();
 
   try {
     const update = req.body || {};
-
-    if (update.callback_query) {
-      const cq = update.callback_query;
-      const chatId = cq?.message?.chat?.id;
-      const data = String(cq?.data || "");
-      const [prefix, id, assetType] = data.split(":");
-
-      if (chatId && prefix === "tsdb_ev") {
-        const cached = getSession(`ev:${id}`);
-        if (!cached) {
-          await answerCallback(cq.id, toSmallCaps("SESSION EXPIRED SEARCH AGAIN"), true);
-          return res.status(200).json({ ok: true });
-        }
-
-        await answerCallback(cq.id, toSmallCaps("LOADING ARTWORK"));
-        const enriched = await enrichEventArtwork(cached);
-        saveSession(`ev:${id}`, enriched);
-
-        const availableCount = [
-          enriched.thumb,
-          enriched.poster,
-          enriched.square,
-          enriched.banner,
-        ].filter(Boolean).length;
-
-        if (!availableCount) {
-          await sendText(
-            chatId,
-            `🛑  <b>${esc(toSmallCaps(enriched.title))}</b>\n\n➥  ${esc(toSmallCaps("NO THUMBNAIL OR POSTER FOUND"))}`
-          );
-          return res.status(200).json({ ok: true });
-        }
-
-        // If only 1 artwork exists (usually Thumb), send directly
-        if (availableCount === 1) {
-          const singleKey = enriched.thumb
-            ? "thumb"
-            : enriched.poster
-            ? "poster"
-            : enriched.square
-            ? "square"
-            : "banner";
-          await sendPhotoAsset(chatId, enriched, singleKey);
-          return res.status(200).json({ ok: true });
-        }
-
-        const msgLines = [
-          `📌  <b>${esc(toSmallCaps(enriched.title))}</b>`,
-          ...(enriched.date ? [`⏳  ${esc(toSmallCaps("DATE & TIME"))}  ⇢  <code>${esc(enriched.date)}</code>`] : []),
-          `➥  ${esc(toSmallCaps("CHOOSE ARTWORK TYPE BELOW"))}  ⇢`,
-        ];
-
-        await sendText(chatId, msgLines.join("\n\n"), buildArtworkTypeKeyboard(enriched));
-        return res.status(200).json({ ok: true });
-      }
-
-      if (chatId && prefix === "tsdb_img") {
-        const cached = getSession(`ev:${id}`);
-        if (!cached) {
-          await answerCallback(cq.id, toSmallCaps("SESSION EXPIRED SEARCH AGAIN"), true);
-          return res.status(200).json({ ok: true });
-        }
-
-        await answerCallback(cq.id, toSmallCaps("SENDING IMAGE"));
-        await sendPhotoAsset(chatId, cached, assetType);
-        return res.status(200).json({ ok: true });
-      }
-
-      return res.status(200).json({ ok: true });
-    }
-
     const msg = update.message || update.edited_message;
     const chatId = msg?.chat?.id;
     const rawText = String(msg?.text || "").trim();
@@ -480,13 +318,14 @@ export default async function handler(req, res) {
     const extra = rest.join(" ").trim();
 
     if (cmd === "/start" || cmd === "/help") {
-      const help = [
-        `📌  <b>${esc(toSmallCaps("THESPORTSDB THUMBNAIL BOT"))}</b>`,
-        `➠  <code>/tsdb &lt;match&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH MATCH THUMB & POSTER"))}`,
-        `➥  <code>/liverpool vs man city</code>  ⇢  ${esc(toSmallCaps("DIRECT SEARCH WITHOUT PREFIX"))}`,
-      ].join("\n\n");
-
-      await sendText(chatId, help);
+      await sendText(
+        chatId,
+        [
+          `📌  <b>${esc(toSmallCaps("THESPORTSDB 16:9 BOT"))}</b>`,
+          `➠  <code>/liverpool vs man city</code>  ⇢  ${esc(toSmallCaps("DIRECT 16:9 THUMBNAILS"))}`,
+          `➥  <code>/tsdb &lt;query&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH MATCH THUMBNAILS"))}`,
+        ].join("\n\n")
+      );
       return res.status(200).json({ ok: true });
     }
 
@@ -499,26 +338,19 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    const events = await searchTheSportsDB(query);
-    if (!events.length) {
+    const thumbs = await searchDirect16x9Thumbnails(query);
+    if (!thumbs.length) {
       await sendText(
         chatId,
-        `🛑  <b>${esc(toSmallCaps(query))}</b>\n\n➥  ${esc(toSmallCaps("NO EVENTS FOUND"))}`
+        `🛑  <b>${esc(toSmallCaps(query))}</b>\n\n➥  ${esc(toSmallCaps("NO 16:9 THUMBNAILS FOUND"))}`
       );
       return res.status(200).json({ ok: true });
     }
 
-    for (const ev of events) {
-      saveSession(`ev:${ev.id}`, ev);
+    for (const ev of thumbs) {
+      await sendDirectPhoto(chatId, ev);
     }
 
-    const head = [
-      `📌  <b>${esc(toSmallCaps(`EVENTS : ${query}`))}</b>`,
-      `➠  ${esc(toSmallCaps("FOUND"))}  ⇢  <b>${events.length}</b>`,
-      `➥  ${esc(toSmallCaps("TAP AN EVENT BELOW"))}  ⇢`,
-    ].join("\n\n");
-
-    await sendText(chatId, head, buildEventListKeyboard(events));
     return res.status(200).json({ ok: true });
   } catch (err) {
     return res.status(200).json({ ok: true, error: err.message });
