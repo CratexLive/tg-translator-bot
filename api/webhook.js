@@ -9,6 +9,15 @@ const DEFAULT_HEADERS = {
   Referer: `${WP_BASE}/`,
 };
 
+const BLOCKED_PATH_RE =
+  /\/(search|login|register|signup|create-account|sign-in|upload|latest|new|request|dmca|privacy|terms|contact|about|random|top|categories|tags|user|account|profile)(\?|$|\/)/i;
+
+const BLOCKED_TITLE_RE =
+  /^(create(\s+an)?\s+account|sign\s*in|log\s*in|register|upload|latest|new\s+wallpapers?|request(\s+more)?(\s+wallpapers?)?|home|categories|tags|wallpapercave|w\s+wp\d+)$/i;
+
+const JUNK_IMG_RE =
+  /logo|avatar|icon|sprite|favicon|loading|spinner|placeholder|badge|banner_ad|ads|header|footer|nav/i;
+
 const SMALL_CAPS_MAP = {
   a: "ᴀ", b: "ʙ", c: "ᴄ", d: "ᴅ", e: "ᴇ", f: "ꜰ", g: "ɢ", h: "ʜ",
   i: "ɪ", j: "ᴊ", k: "ᴋ", l: "ʟ", m: "ᴍ", n: "ɴ", o: "ᴏ", p: "ᴘ",
@@ -61,10 +70,27 @@ function stripTags(html) {
     .trim();
 }
 
-function isJunkImageUrl(url) {
-  return /logo|avatar|icon|sprite|favicon|loading|spinner|placeholder|badge|banner_ad|ads/i.test(
-    String(url || "")
-  );
+function removeHeaderFooterNoise(html) {
+  return String(html || "")
+    .replace(/<header[\s\S]*?<\/header>/gi, " ")
+    .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, " ");
+}
+
+function matchesQuery(title, href, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  const hay = `${title} ${href.replace(/[-_/]+/g, " ")}`.toLowerCase();
+  if (hay.includes(q)) return true;
+
+  const stopWords = new Set(["vs", "v", "the", "and", "of", "in", "for", "hd", "4k"]);
+  const tokens = q
+    .split(/\s+/)
+    .map((t) => t.replace(/[^a-z0-9]/g, ""))
+    .filter((t) => t.length >= 2 && !stopWords.has(t));
+
+  if (!tokens.length) return true;
+  return tokens.some((tok) => hay.includes(tok));
 }
 
 async function fetchHtml(url) {
@@ -84,41 +110,36 @@ async function fetchHtml(url) {
 }
 
 function parseSearchResults(html, query) {
+  const cleanHtml = removeHeaderFooterNoise(html);
   const results = [];
   const seen = new Set();
 
-  // Extract wallpaper pack/gallery links and surrounding titles/thumbnails
   const cardRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m;
-  while ((m = cardRegex.exec(html)) !== null) {
+  while ((m = cardRegex.exec(cleanHtml)) !== null) {
     const fullHref = resolveUrl(m[1]);
     const inner = m[2] || "";
     if (!fullHref.startsWith(`${WP_BASE}/`)) continue;
-
-    // Skip navigation/footer/account routes
-    if (
-      /\/(search|login|register|dmca|privacy|terms|contact|about|random|top|categories|tags)(\?|$|\/)/i.test(
-        fullHref
-      )
-    ) {
-      continue;
-    }
+    if (BLOCKED_PATH_RE.test(fullHref)) continue;
 
     const imgMatch =
       inner.match(/data-src=["']([^"']+)["']/i) ||
       inner.match(/src=["']([^"']+)["']/i);
     const thumbUrl = resolveUrl(imgMatch?.[1] || "");
+    if (thumbUrl && JUNK_IMG_RE.test(thumbUrl)) continue;
 
     const titleAttrMatch =
       inner.match(/alt=["']([^"']+)["']/i) ||
       inner.match(/title=["']([^"']+)["']/i);
-    const rawTitle =
+    const rawTitle = (
       titleAttrMatch?.[1] ||
       stripTags(inner) ||
-      fullHref.replace(WP_BASE, "").replace(/[-_/]+/g, " ").trim();
+      fullHref.replace(WP_BASE, "").replace(/[-_/]+/g, " ")
+    ).trim();
 
-    if (!rawTitle || rawTitle.length < 2) continue;
-    if (thumbUrl && isJunkImageUrl(thumbUrl)) continue;
+    if (!rawTitle || rawTitle.length < 3) continue;
+    if (BLOCKED_TITLE_RE.test(rawTitle)) continue;
+    if (!matchesQuery(rawTitle, fullHref, query)) continue;
 
     const key = fullHref.toLowerCase();
     if (seen.has(key)) continue;
@@ -127,69 +148,45 @@ function parseSearchResults(html, query) {
     results.push({
       id: makeWpId(`pack:${fullHref}`),
       kind: "pack",
-      title: rawTitle.slice(0, 120),
+      title: rawTitle.slice(0, 110),
       pageUrl: fullHref,
       imageUrl: thumbUrl || "",
       query,
     });
 
-    if (results.length >= 30) break;
-  }
-
-  // Fallback direct image URLs if pack links are sparse
-  if (!results.length) {
-    const imgMatches =
-      html.match(
-        /https?:\/\/(?:images\.wallpapercave\.com|wallpapercave\.com)\/[^\s"'<>\\)]+\.(?:jpg|jpeg|png|webp)/gi
-      ) || [];
-    const uniqueImgs = [...new Set(imgMatches.map((u) => u.replace(/\\+$/, "")))].filter(
-      (u) => !isJunkImageUrl(u)
-    );
-
-    uniqueImgs.slice(0, 20).forEach((imgUrl, idx) => {
-      results.push({
-        id: makeWpId(`img:${imgUrl}`),
-        kind: "direct",
-        title: `${query} Wallpaper ${idx + 1}`,
-        pageUrl: imgUrl,
-        imageUrl: imgUrl,
-        query,
-      });
-    });
+    if (results.length >= 25) break;
   }
 
   return results;
 }
 
 function parseWallpaperPageImages(html, pageUrl, title) {
+  const cleanHtml = removeHeaderFooterNoise(html);
   const candidates = [];
 
-  // Prefer high-res wallpaper URLs (/wp/wp... or /w/...)
   const regex =
     /(?:data-src|data-full|data-original|src|href)=["']([^"']*(?:\/wp\/wp|\/w\/|images\.wallpapercave\.com)[^"']*\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)["']/gi;
 
   let m;
-  while ((m = regex.exec(html)) !== null) {
+  while ((m = regex.exec(cleanHtml)) !== null) {
     const resolved = resolveUrl(m[1]);
-    if (!resolved || isJunkImageUrl(resolved)) continue;
+    if (!resolved || JUNK_IMG_RE.test(resolved)) continue;
     if (!candidates.includes(resolved)) {
       candidates.push(resolved);
     }
   }
 
-  // Also check unquoted direct image links
   const plainMatches =
-    html.match(
+    cleanHtml.match(
       /https?:\/\/(?:images\.wallpapercave\.com|wallpapercave\.com)\/(?:wp\/wp|w\/)[^\s"'<>\\)]+\.(?:jpg|jpeg|png|webp)/gi
     ) || [];
   for (const raw of plainMatches) {
     const clean = raw.replace(/\\+$/, "");
-    if (!isJunkImageUrl(clean) && !candidates.includes(clean)) {
+    if (!JUNK_IMG_RE.test(clean) && !candidates.includes(clean)) {
       candidates.push(clean);
     }
   }
 
-  // Sort / prioritize /wp/wp full-size assets over small thumbnails
   candidates.sort((a, b) => {
     const scoreA = /\/wp\/wp/i.test(a) ? 2 : /\/w\//i.test(a) ? 1 : 0;
     const scoreB = /\/wp\/wp/i.test(b) ? 2 : /\/w\//i.test(b) ? 1 : 0;
@@ -214,16 +211,6 @@ async function searchWallpaperCave(query) {
 
 async function getPackWallpapers(packItem) {
   if (!packItem?.pageUrl) return [];
-  if (packItem.kind === "direct" && packItem.imageUrl) {
-    return [
-      {
-        id: packItem.id,
-        title: packItem.title,
-        pageUrl: packItem.pageUrl,
-        imageUrl: packItem.imageUrl,
-      },
-    ];
-  }
   const html = await fetchHtml(packItem.pageUrl);
   const walls = parseWallpaperPageImages(html, packItem.pageUrl, packItem.title);
   if (!walls.length && packItem.imageUrl) {
@@ -281,9 +268,6 @@ async function sendPhotoWithUrl(chatId, wall) {
   if (/^https:\/\//i.test(wall.imageUrl) && wall.imageUrl.length <= 2048) {
     buttons.push([{ text: `➔  ${toSmallCaps("OPEN FULL IMAGE")}`, url: wall.imageUrl }]);
   }
-  if (/^https:\/\//i.test(wall.pageUrl) && wall.pageUrl.length <= 2048) {
-    buttons.push([{ text: `➥  ${toSmallCaps("OPEN PACK PAGE")}`, url: wall.pageUrl }]);
-  }
 
   const payload = {
     chat_id: chatId,
@@ -301,7 +285,6 @@ async function sendPhotoWithUrl(chatId, wall) {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.ok) {
-    // Fallback to text message with direct URL if Telegram cannot fetch image directly
     await sendText(
       chatId,
       [
@@ -352,7 +335,6 @@ async function answerCallback(id, text = "", alert = false) {
   }).catch(() => {});
 }
 
-// Lightweight in-memory cache per warm serverless instance
 const sessionCache = new Map();
 
 function saveSession(key, value) {
@@ -444,8 +426,8 @@ export default async function handler(req, res) {
     if (cmd === "/start" || cmd === "/help") {
       const help = [
         `📌  <b>${esc(toSmallCaps("WALLPAPERCAVE BOT"))}</b>`,
-        `➠  <code>/wp &lt;keyword&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH WALLPAPER PACKS"))}`,
-        `➥  <code>/wp cricket</code>  ⇢  ${esc(toSmallCaps("EXAMPLE SEARCH QUERY"))}`,
+        `➠  <code>/wp &lt;keyword&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH WALLPAPERS"))}`,
+        `➥  <code>/wp football</code>  ⇢  ${esc(toSmallCaps("EXAMPLE QUERY"))}`,
       ].join("\n\n");
 
       await sendText(chatId, help);
@@ -456,7 +438,7 @@ export default async function handler(req, res) {
     if (!query) {
       await sendText(
         chatId,
-        `📌  <b>${esc(toSmallCaps("ENTER A KEYWORD"))}</b>\n\n➥  <code>/wp cricket</code>`
+        `📌  <b>${esc(toSmallCaps("ENTER A KEYWORD"))}</b>\n\n➥  <code>/wp football</code>`
       );
       return res.status(200).json({ ok: true });
     }
@@ -486,4 +468,3 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
-
