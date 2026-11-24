@@ -88,25 +88,10 @@ function normalizeThumb16x9(url) {
 function cleanPhrase(str) {
   return String(str || "")
     .toLowerCase()
-    .replace(/\b(fc|wfc|women|men|u19|u21|u23|xi|ii)\b/g, " ")
+    .replace(/\b(fc|wfc|kv|sk|sc|fk|u17|u19|u21|u23|women|men|xi|ii)\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function formatIstFromDate(dt) {
-  if (!(dt instanceof Date) || Number.isNaN(dt.getTime())) return "";
-  return (
-    dt.toLocaleString("en-IN", {
-      timeZone: "Asia/Kolkata",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    }) + " IST"
-  );
 }
 
 function parseJsonDate(value) {
@@ -140,13 +125,42 @@ function parseJsonDate(value) {
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
-function computeStatusFromWindow(st, en) {
-  if (!(st instanceof Date) || Number.isNaN(st.getTime())) return "SCHEDULED";
-  const now = Date.now();
-  const endMs = en instanceof Date && !Number.isNaN(en.getTime()) ? en.getTime() : st.getTime() + 3 * 3600000;
-  if (now >= st.getTime() && now <= endMs) return "LIVE";
-  if (now > endMs) return "COMPLETED";
-  return "UPCOMING";
+function formatIstFromDate(dt, fallbackStr = "") {
+  if (dt instanceof Date && !Number.isNaN(dt.getTime())) {
+    return (
+      dt.toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }) + " IST"
+    );
+  }
+  return String(fallbackStr || "").trim();
+}
+
+function normalizeStatus(rawStatus, st, en) {
+  const s = String(rawStatus || "").trim().toUpperCase();
+  if (s === "LIVE") return "LIVE";
+  if (s === "UPCOMING" || s === "SOON") return "UPCOMING";
+  if (s === "ENDED" || s === "FINISHED" || s === "COMPLETED" || s === "DONE") {
+    return "COMPLETED";
+  }
+
+  if (st instanceof Date && !Number.isNaN(st.getTime())) {
+    const now = Date.now();
+    const endMs =
+      en instanceof Date && !Number.isNaN(en.getTime())
+        ? en.getTime()
+        : st.getTime() + 3 * 3600000;
+    if (now >= st.getTime() && now <= endMs) return "LIVE";
+    if (now > endMs) return "COMPLETED";
+    return "UPCOMING";
+  }
+  return "SCHEDULED";
 }
 
 function getStatusBadge(status) {
@@ -186,35 +200,37 @@ function parseFootxEvents(data) {
 
   for (const item of list) {
     if (!item || typeof item !== "object") continue;
-    const info = item.event || item.eventInfo || item.matchInfo || item;
-    const teamA = String(info.teamA || info.home || item.homeTeam || "").trim();
-    const teamB = String(info.teamB || info.away || item.awayTeam || "").trim();
+    const evObj = item.event || item.eventInfo || item.matchInfo || {};
+    const teamA = String(evObj.teamA || item.teamA || item.homeTeam || "").trim();
+    const teamB = String(evObj.teamB || item.teamB || item.awayTeam || "").trim();
     const matchTitle = String(
       item.title ||
-        item.event_name ||
-        (teamA && teamB ? `${teamA} vs ${teamB}` : info.eventName || item.name || "")
+        evObj.name ||
+        (teamA && teamB ? `${teamA} vs ${teamB}` : item.name || "")
     ).trim();
 
     if (!matchTitle) continue;
 
     const eventId = String(
-      item.id || matchTitle.toLowerCase().replace(/[^a-z0-9]/g, "")
+      item.id ?? matchTitle.toLowerCase().replace(/[^a-z0-9]/g, "")
     ).trim();
     const sport = String(
-      item.Category || item.sport || info.category || info.name || item.cat || ""
+      item.cat || item.Category || item.sport || evObj.category || ""
     ).trim();
     const comp = String(
-      info.type || info.eventName || item.tournament || ""
+      evObj.name !== matchTitle ? evObj.name || evObj.type || "" : evObj.type || ""
     ).trim();
 
-    const st = parseJsonDate(info.startTimeIST || info.startTime || item.startTime || item.time);
-    let en = parseJsonDate(info.endTimeIST || info.endTime || item.endTime);
+    const rawStart = evObj.startTimeIST || evObj.startTime || item.startTimeIST || item.startTime || "";
+    const rawEnd = evObj.endTimeIST || evObj.endTime || item.endTimeIST || item.endTime || "";
+    const st = parseJsonDate(rawStart);
+    let en = parseJsonDate(rawEnd);
     if (st && (!en || en <= st)) en = new Date(st.getTime() + 3 * 3600000);
 
     const rawStreams = Array.isArray(item.streams)
       ? item.streams
-      : Array.isArray(info.streams)
-      ? info.streams
+      : Array.isArray(evObj.streams)
+      ? evObj.streams
       : [];
 
     const streams = [];
@@ -222,10 +238,13 @@ function parseFootxEvents(data) {
       const s = rawStreams[i];
       if (!s) continue;
       const channelName = String(
-        s.channel_name || s.title || s.name || `Stream ${i + 1}`
+        s.title || s.channel_name || s.name || `Stream ${i + 1}`
       ).trim();
+      const rawSid = s.stream_id ?? s.id ?? channelName;
       const streamId =
-        channelName.toLowerCase().replace(/[^a-z0-9]/g, "_") || `stream_${i + 1}`;
+        String(rawSid)
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, "_") || `stream_${i + 1}`;
       streams.push({ id: streamId, title: channelName });
     }
 
@@ -236,8 +255,8 @@ function parseFootxEvents(data) {
       teamB,
       sport,
       comp,
-      dateDisplay: formatIstFromDate(st),
-      status: computeStatusFromWindow(st, en),
+      dateDisplay: formatIstFromDate(st, rawStart),
+      status: normalizeStatus(item.status, st, en),
       streams,
     });
   }
@@ -259,13 +278,7 @@ async function loadFootxEventsCatalog() {
 
   const byKey = new Map();
   for (const ev of combined) {
-    const pairKey =
-      ev.teamA && ev.teamB
-        ? [cleanPhrase(ev.teamA), cleanPhrase(ev.teamB)].sort().join("__")
-        : cleanPhrase(ev.title);
-    const key = pairKey || ev.id;
-    if (!key) continue;
-
+    const key = ev.id ? `id:${ev.id}` : `t:${cleanPhrase(ev.title)}`;
     if (!byKey.has(key)) {
       byKey.set(key, { ...ev, streams: [...ev.streams] });
     } else {
@@ -277,6 +290,7 @@ async function loadFootxEventsCatalog() {
       }
       if (!existing.dateDisplay && ev.dateDisplay) existing.dateDisplay = ev.dateDisplay;
       if (!existing.comp && ev.comp) existing.comp = ev.comp;
+      if (!existing.sport && ev.sport) existing.sport = ev.sport;
     }
   }
 
@@ -288,7 +302,10 @@ function buildQueryVariations(query) {
   if (!raw) return [];
 
   const variations = new Set([raw]);
-  const splitVs = raw.split(/\s+(?:vs?\.?|@|-|\/)\s+/i).map((s) => s.trim()).filter(Boolean);
+  const splitVs = raw
+    .split(/\s+(?:vs?\.?|@|-|\/)\s+/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   if (splitVs.length >= 2) {
     const left = splitVs[0];
@@ -429,11 +446,12 @@ async function searchApiThumbForEvent(searchTerm, targetEv) {
 
 async function fetchThumbForJsonEvent(jsonEv, userQuery) {
   const terms = [];
-  if (jsonEv.teamA && jsonEv.teamB) {
+  if (jsonEv.teamA && jsonEv.teamB && cleanPhrase(jsonEv.teamA) !== cleanPhrase(jsonEv.teamB)) {
     terms.push(`${jsonEv.teamA} vs ${jsonEv.teamB}`);
     terms.push(`${jsonEv.teamB} vs ${jsonEv.teamA}`);
   }
   terms.push(jsonEv.title);
+  if (jsonEv.comp) terms.push(jsonEv.comp);
   for (const v of buildQueryVariations(userQuery)) {
     terms.push(v);
   }
@@ -691,9 +709,9 @@ export default async function handler(req, res) {
           `╔══════════════════════════╗`,
           `📌  <b>${esc(toSmallCaps("JSON MATCH 16:9 STUDIO"))}</b>`,
           `╚══════════════════════════╝`,
-          `➠  <code>/liverpool vs man city</code>  ⇢  ${esc(toSmallCaps("EX: MATCH IN JSON"))}\n` +
-            `➠  <code>/man city vs liverpool</code>  ⇢  ${esc(toSmallCaps("EX: REVERSE ORDER"))}\n` +
-            `➥  <code>/find &lt;query&gt;</code>         ⇢  ${esc(toSmallCaps("EX: /find arsenal"))}`,
+          `➠  <code>/india vs new zealand</code>  ⇢  ${esc(toSmallCaps("EX: CRICKET MATCH"))}\n` +
+            `➠  <code>/india vs bangladesh</code>   ⇢  ${esc(toSmallCaps("EX: REVERSE OR PARTIAL"))}\n` +
+            `➥  <code>/find &lt;query&gt;</code>          ⇢  ${esc(toSmallCaps("EX: /find arsenal"))}`,
         ].join("\n")
       );
       return res.status(200).json({ ok: true });
@@ -706,8 +724,8 @@ export default async function handler(req, res) {
         chatId,
         [
           `📌  <b>${esc(toSmallCaps("ENTER A MATCH OR TEAM QUERY"))}</b>`,
-          `➠  ${esc(toSmallCaps("EXAMPLE"))} 1  ⇢  <code>/liverpool vs man city</code>`,
-          `➥  ${esc(toSmallCaps("EXAMPLE"))} 2  ⇢  <code>/india vs australia</code>`,
+          `➠  ${esc(toSmallCaps("EXAMPLE"))} 1  ⇢  <code>/india vs new zealand</code>`,
+          `➥  ${esc(toSmallCaps("EXAMPLE"))} 2  ⇢  <code>/arsenal vs borussia dortmund</code>`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
@@ -719,8 +737,8 @@ export default async function handler(req, res) {
         chatId,
         [
           `🛑  <b>${esc(toSmallCaps(query))}</b>`,
-          `➥  ${esc(toSmallCaps("NO MATCH FOUND IN FEED OR THUMBNAIL"))}`,
-          `➠  ${esc(toSmallCaps("TRY EX"))}  ⇢  <code>/liverpool vs man city</code>`,
+          `➥  ${esc(toSmallCaps("NO MATCH IN JSON OR 16:9 THUMB"))}`,
+          `➠  ${esc(toSmallCaps("TRY EX"))}  ⇢  <code>/india vs new zealand</code>`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
