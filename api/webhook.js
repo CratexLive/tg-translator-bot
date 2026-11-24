@@ -85,36 +85,19 @@ function normalizeThumb16x9(url) {
   return clean.replace(/\/(preview|tiny|small)$/i, "");
 }
 
-function normalizeWords(str) {
+function cleanPhrase(str) {
   return String(str || "")
     .toLowerCase()
     .replace(/\b(fc|wfc|women|men|u19|u21|u23|xi|ii)\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function formatIstFromUtc(dateStr, timeStr) {
-  const d = String(dateStr || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "";
-  const cleanTime = String(timeStr || "00:00:00").trim();
-  const iso = `${d}T${/^\d{2}:\d{2}/.test(cleanTime) ? cleanTime : "00:00:00"}Z`;
-  const parsed = Date.parse(iso);
-  if (!Number.isFinite(parsed)) return d;
-
-  const hasClock = /^\d{2}:\d{2}/.test(cleanTime) && cleanTime !== "00:00:00";
-  if (!hasClock) {
-    return new Date(parsed).toLocaleDateString("en-IN", {
-      timeZone: "Asia/Kolkata",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  }
-
+function formatIstFromDate(dt) {
+  if (!(dt instanceof Date) || Number.isNaN(dt.getTime())) return "";
   return (
-    new Date(parsed).toLocaleString("en-IN", {
+    dt.toLocaleString("en-IN", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
       month: "short",
@@ -126,19 +109,43 @@ function formatIstFromUtc(dateStr, timeStr) {
   );
 }
 
-function computeMatchStatus(dateStr, timeStr) {
-  const d = String(dateStr || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "SCHEDULED";
-  const cleanTime = String(timeStr || "").trim();
-  if (!/^\d{2}:\d{2}/.test(cleanTime) || cleanTime === "00:00:00") return "SCHEDULED";
+function parseJsonDate(value) {
+  if (!value) return null;
+  let s = String(value).trim();
+  if (!s || s === "null" || s === "undefined") return null;
+  const ist = /\bIST\b/i.test(s);
+  if (ist) s = s.replace(/\s*IST\s*$/i, "").trim();
 
-  const startMs = Date.parse(`${d}T${cleanTime}Z`);
-  if (!Number.isFinite(startMs)) return "SCHEDULED";
+  const m1 = s.match(
+    /^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?/
+  );
+  if (m1) {
+    const [, y, mo, d, h, mi, se = "00"] = m1;
+    const dt = new Date(
+      `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${mi}:${se}${
+        ist ? "+05:30" : "Z"
+      }`
+    );
+    if (!Number.isNaN(dt.getTime())) return dt;
+  }
 
+  const m2 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if (m2) {
+    const [, d, mo, y, h, mi, se] = m2;
+    const dt = new Date(`${y}-${mo}-${d}T${h}:${mi}:${se}Z`);
+    if (!Number.isNaN(dt.getTime())) return dt;
+  }
+
+  const dt = new Date(s);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function computeStatusFromWindow(st, en) {
+  if (!(st instanceof Date) || Number.isNaN(st.getTime())) return "SCHEDULED";
   const now = Date.now();
-  const estDurationMs = 3 * 60 * 60 * 1000;
-  if (now >= startMs && now <= startMs + estDurationMs) return "LIVE";
-  if (now > startMs + estDurationMs) return "COMPLETED";
+  const endMs = en instanceof Date && !Number.isNaN(en.getTime()) ? en.getTime() : st.getTime() + 3 * 3600000;
+  if (now >= st.getTime() && now <= endMs) return "LIVE";
+  if (now > endMs) return "COMPLETED";
   return "UPCOMING";
 }
 
@@ -180,7 +187,7 @@ function parseFootxEvents(data) {
   for (const item of list) {
     if (!item || typeof item !== "object") continue;
     const info = item.event || item.eventInfo || item.matchInfo || item;
-    const teamA = String(info.teamA || info.home || item.homeTeam || item.title || "").trim();
+    const teamA = String(info.teamA || info.home || item.homeTeam || "").trim();
     const teamB = String(info.teamB || info.away || item.awayTeam || "").trim();
     const matchTitle = String(
       item.title ||
@@ -190,7 +197,20 @@ function parseFootxEvents(data) {
 
     if (!matchTitle) continue;
 
-    const eventId = String(item.id || matchTitle.toLowerCase().replace(/[^a-z0-9]/g, "")).trim();
+    const eventId = String(
+      item.id || matchTitle.toLowerCase().replace(/[^a-z0-9]/g, "")
+    ).trim();
+    const sport = String(
+      item.Category || item.sport || info.category || info.name || item.cat || ""
+    ).trim();
+    const comp = String(
+      info.type || info.eventName || item.tournament || ""
+    ).trim();
+
+    const st = parseJsonDate(info.startTimeIST || info.startTime || item.startTime || item.time);
+    let en = parseJsonDate(info.endTimeIST || info.endTime || item.endTime);
+    if (st && (!en || en <= st)) en = new Date(st.getTime() + 3 * 3600000);
+
     const rawStreams = Array.isArray(item.streams)
       ? item.streams
       : Array.isArray(info.streams)
@@ -201,12 +221,12 @@ function parseFootxEvents(data) {
     for (let i = 0; i < rawStreams.length; i++) {
       const s = rawStreams[i];
       if (!s) continue;
-      const channelName = String(s.channel_name || s.title || s.name || `Stream ${i + 1}`).trim();
-      const streamId = channelName.toLowerCase().replace(/[^a-z0-9]/g, "_") || `stream_${i + 1}`;
-      streams.push({
-        id: streamId,
-        title: channelName,
-      });
+      const channelName = String(
+        s.channel_name || s.title || s.name || `Stream ${i + 1}`
+      ).trim();
+      const streamId =
+        channelName.toLowerCase().replace(/[^a-z0-9]/g, "_") || `stream_${i + 1}`;
+      streams.push({ id: streamId, title: channelName });
     }
 
     parsed.push({
@@ -214,6 +234,10 @@ function parseFootxEvents(data) {
       title: matchTitle,
       teamA,
       teamB,
+      sport,
+      comp,
+      dateDisplay: formatIstFromDate(st),
+      status: computeStatusFromWindow(st, en),
       streams,
     });
   }
@@ -233,224 +257,236 @@ async function loadFootxEventsCatalog() {
     }
   }
 
-  const byId = new Map();
+  const byKey = new Map();
   for (const ev of combined) {
-    if (!ev.id) continue;
-    if (!byId.has(ev.id)) {
-      byId.set(ev.id, { ...ev, streams: [...ev.streams] });
+    const pairKey =
+      ev.teamA && ev.teamB
+        ? [cleanPhrase(ev.teamA), cleanPhrase(ev.teamB)].sort().join("__")
+        : cleanPhrase(ev.title);
+    const key = pairKey || ev.id;
+    if (!key) continue;
+
+    if (!byKey.has(key)) {
+      byKey.set(key, { ...ev, streams: [...ev.streams] });
     } else {
-      const existing = byId.get(ev.id);
+      const existing = byKey.get(key);
       for (const st of ev.streams) {
         if (!existing.streams.some((x) => x.id === st.id)) {
           existing.streams.push(st);
         }
       }
+      if (!existing.dateDisplay && ev.dateDisplay) existing.dateDisplay = ev.dateDisplay;
+      if (!existing.comp && ev.comp) existing.comp = ev.comp;
     }
   }
 
-  return Array.from(byId.values());
+  return Array.from(byKey.values());
 }
 
-function matchFootxWatchUrl(evTitle, catalog) {
-  if (!Array.isArray(catalog) || !catalog.length) return "";
-  const evTokens = new Set(normalizeWords(evTitle));
-  if (!evTokens.size) return "";
+function buildQueryVariations(query) {
+  const raw = String(query || "").trim();
+  if (!raw) return [];
 
-  let best = null;
-  let bestScore = 0;
+  const variations = new Set([raw]);
+  const splitVs = raw.split(/\s+(?:vs?\.?|@|-|\/)\s+/i).map((s) => s.trim()).filter(Boolean);
 
-  for (const item of catalog) {
-    const candTokens = normalizeWords(`${item.title} ${item.teamA} ${item.teamB}`);
-    if (!candTokens.length) continue;
-
-    let overlap = 0;
-    for (const tok of candTokens) {
-      if (evTokens.has(tok)) overlap += 1;
-    }
-
-    const score = overlap / Math.max(candTokens.length, 1);
-    if (overlap >= 2 && score > bestScore) {
-      bestScore = score;
-      best = item;
+  if (splitVs.length >= 2) {
+    const left = splitVs[0];
+    const right = splitVs.slice(1).join(" ");
+    variations.add(`${left} vs ${right}`);
+    variations.add(`${right} vs ${left}`);
+    variations.add(`${left} ${right}`);
+    variations.add(`${right} ${left}`);
+  } else {
+    const words = raw.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) {
+      variations.add([...words].reverse().join(" "));
     }
   }
 
-  if (!best) return "";
-  const firstStreamId = best.streams?.[0]?.id || "0";
-  return `${FOOTX_WATCH_BASE}?id=${encodeURIComponent(best.id)}&stream_id=${encodeURIComponent(firstStreamId)}`;
+  return Array.from(variations);
 }
 
-function extractBrowseEventsFromHtml(html) {
-  const results = [];
-  const seen = new Set();
+function filterCatalogByQuery(catalog, query) {
+  const cleanQ = cleanPhrase(query);
+  if (!cleanQ) return [];
 
+  const tokens = cleanQ.split(/\s+/).filter((t) => t.length >= 2);
+  if (!tokens.length) return [];
+
+  const splitVs = String(query || "")
+    .split(/\s+(?:vs?\.?|@|-|\/)\s+/i)
+    .map((s) => cleanPhrase(s))
+    .filter(Boolean);
+
+  const matches = [];
+
+  for (const ev of catalog) {
+    const hayTitle = cleanPhrase(ev.title);
+    const hayA = cleanPhrase(ev.teamA);
+    const hayB = cleanPhrase(ev.teamB);
+    const hayMeta = cleanPhrase(`${ev.title} ${ev.teamA} ${ev.teamB} ${ev.comp} ${ev.sport}`);
+
+    let matched = false;
+    if (splitVs.length >= 2) {
+      const side1 = splitVs[0];
+      const side2 = splitVs.slice(1).join(" ");
+      const hasSide1 = hayA.includes(side1) || hayB.includes(side1) || hayTitle.includes(side1);
+      const hasSide2 = hayA.includes(side2) || hayB.includes(side2) || hayTitle.includes(side2);
+      matched = hasSide1 && hasSide2;
+    } else {
+      matched = tokens.every((tok) => hayMeta.includes(tok));
+    }
+
+    if (matched) {
+      const firstStreamId = ev.streams?.[0]?.id || "0";
+      matches.push({
+        ...ev,
+        watchUrl: `${FOOTX_WATCH_BASE}?id=${encodeURIComponent(
+          ev.id
+        )}&stream_id=${encodeURIComponent(firstStreamId)}`,
+      });
+    }
+  }
+
+  return matches.slice(0, MAX_POOL);
+}
+
+function scoreCandidateEvent(candTitle, targetEv) {
+  const candClean = cleanPhrase(candTitle);
+  const aClean = cleanPhrase(targetEv.teamA);
+  const bClean = cleanPhrase(targetEv.teamB);
+  const tClean = cleanPhrase(targetEv.title);
+
+  if (aClean && bClean) {
+    const hasA = candClean.includes(aClean);
+    const hasB = candClean.includes(bClean);
+    if (hasA && hasB) return 100;
+    if (hasA || hasB) return 40;
+  }
+
+  const targetTokens = tClean.split(/\s+/).filter((t) => t.length >= 2);
+  if (!targetTokens.length) return 0;
+  const hitCount = targetTokens.filter((tok) => candClean.includes(tok)).length;
+  return Math.round((hitCount / targetTokens.length) * 80);
+}
+
+function extractBestThumbFromBrowseHtml(html, targetEv) {
   const eventsSectionMatch = html.match(/Events<\/h\d>([\s\S]*?)(?:<h\d|<footer|$)/i);
   const scopeHtml = eventsSectionMatch ? eventsSectionMatch[1] : html;
 
-  const anchorRegex = /<a[^>]+href=["']([^"']*\/event\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const anchorRegex =
+    /<a[^>]+href=["']([^"']*\/event\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m;
-  while ((m = anchorRegex.exec(scopeHtml)) !== null) {
-    const eventUrl = resolveUrl(m[1]);
-    const inner = m[2] || "";
-    if (!eventUrl || seen.has(eventUrl.toLowerCase())) continue;
+  let bestThumb = "";
+  let bestScore = 0;
 
+  while ((m = anchorRegex.exec(scopeHtml)) !== null) {
+    const inner = m[2] || "";
     const imgMatch =
       inner.match(/data-src=["']([^"']+)["']/i) ||
       inner.match(/src=["']([^"']+)["']/i);
-    const thumbUrl = normalizeThumb16x9(imgMatch?.[1] || "");
+    const thumb = normalizeThumb16x9(imgMatch?.[1] || "");
+    if (!thumb) continue;
 
-    const titleText = stripTags(inner)
-      .replace(/^[^a-zA-Z0-9]+/, "")
-      .trim();
-    if (!titleText) continue;
-
-    const dateMatch = titleText.match(/\((\d{4}-\d{2}-\d{2})\)/);
-    const rawDate = dateMatch ? dateMatch[1] : "";
-    const cleanTitle = titleText.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, "").trim() || titleText;
-
-    seen.add(eventUrl.toLowerCase());
-    results.push({
-      title: cleanTitle,
-      rawDate,
-      rawTime: "",
-      dateDisplay: formatIstFromUtc(rawDate, ""),
-      status: computeMatchStatus(rawDate, ""),
-      league: "",
-      venue: "",
-      round: "",
-      eventUrl,
-      thumb16x9: thumbUrl,
-      watchUrl: "",
-    });
-
-    if (results.length >= MAX_POOL) break;
+    const label = stripTags(inner).replace(/^[^a-zA-Z0-9]+/, "").trim();
+    const sc = scoreCandidateEvent(label, targetEv);
+    if (sc > bestScore) {
+      bestScore = sc;
+      bestThumb = thumb;
+    }
   }
 
-  return results;
+  return bestScore >= 60 ? bestThumb : "";
 }
 
-async function searchEventsFromApi(query) {
-  const cleanQ = String(query || "").trim();
-  if (!cleanQ) return [];
-
-  const formatted = cleanQ.replace(/\s+/g, "_");
+async function searchApiThumbForEvent(searchTerm, targetEv) {
+  const formatted = String(searchTerm || "").trim().replace(/\s+/g, "_");
+  if (!formatted) return "";
   const apiUrl = `${TSDB_API_BASE}/searchevents.php?e=${encodeURIComponent(formatted)}`;
 
   try {
     const json = await fetchResource(apiUrl, true);
-    const events = Array.isArray(json?.event) ? json.event : [];
-    return events.slice(0, MAX_POOL).map((ev) => {
-      const eventId = String(ev?.idEvent || "").trim();
-      const name = String(ev?.strEvent || "").trim();
-      const dateStr = String(ev?.dateEvent || "").trim();
-      const timeStr = String(ev?.strTime || "").trim();
-      const league = String(ev?.strLeague || "").trim();
-      const venue = String(ev?.strVenue || "").trim();
-      const round = String(ev?.intRound || "").trim();
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const eventUrl = eventId
-        ? `${TSDB_BASE}/event/${eventId}${slug ? `-${slug}` : ""}`
-        : TSDB_BASE;
+    const list = Array.isArray(json?.event) ? json.event : [];
+    let bestThumb = "";
+    let bestScore = 0;
 
-      return {
-        title: name,
-        rawDate: dateStr,
-        rawTime: timeStr,
-        dateDisplay: formatIstFromUtc(dateStr, timeStr),
-        status: computeMatchStatus(dateStr, timeStr),
-        league,
-        venue,
-        round,
-        eventUrl,
-        thumb16x9: normalizeThumb16x9(ev?.strThumb || ""),
-        watchUrl: "",
-      };
-    });
+    for (const ev of list) {
+      const thumb = normalizeThumb16x9(ev?.strThumb || "");
+      if (!thumb) continue;
+      const sc = scoreCandidateEvent(ev?.strEvent || "", targetEv);
+      if (sc > bestScore) {
+        bestScore = sc;
+        bestThumb = thumb;
+      }
+    }
+
+    return bestScore >= 60 ? bestThumb : "";
   } catch {
-    return [];
+    return "";
   }
 }
 
-async function resolveEventDetailsAndThumb16x9(evItem) {
-  let current = { ...evItem };
-  if (!current.thumb16x9 && current.eventUrl && current.eventUrl !== TSDB_BASE) {
-    try {
-      const html = await fetchResource(current.eventUrl, false);
-      const thumbMatch = html.match(
-        /https?:\/\/r2\.thesportsdb\.com\/images\/media\/event\/thumb\/[^\s"'<>]+/i
-      );
-      if (thumbMatch?.[0]) {
-        current.thumb16x9 = normalizeThumb16x9(thumbMatch[0]);
-      }
-      if (!current.venue) {
-        const venueMatch = html.match(/Venue<\/h\d>\s*<[^>]+>([^<]+)</i);
-        if (venueMatch?.[1]) current.venue = stripTags(venueMatch[1]);
-      }
-      if (!current.league) {
-        const leagueMatch = html.match(/League<\/h\d>\s*<[^>]+>([^<]+)</i);
-        if (leagueMatch?.[1]) current.league = stripTags(leagueMatch[1]);
-      }
-    } catch {
-      // Keep available item metadata
+async function fetchThumbForJsonEvent(jsonEv, userQuery) {
+  const terms = [];
+  if (jsonEv.teamA && jsonEv.teamB) {
+    terms.push(`${jsonEv.teamA} vs ${jsonEv.teamB}`);
+    terms.push(`${jsonEv.teamB} vs ${jsonEv.teamA}`);
+  }
+  terms.push(jsonEv.title);
+  for (const v of buildQueryVariations(userQuery)) {
+    terms.push(v);
+  }
+  const uniqueTerms = [...new Set(terms.map((t) => t.trim()).filter(Boolean))];
+
+  for (const term of uniqueTerms) {
+    const [browseRes, apiRes] = await Promise.allSettled([
+      fetchResource(`${TSDB_BASE}/browse?s=${encodeURIComponent(term)}`, false),
+      searchApiThumbForEvent(term, jsonEv),
+    ]);
+
+    if (apiRes.status === "fulfilled" && apiRes.value) {
+      return apiRes.value;
+    }
+    if (browseRes.status === "fulfilled" && browseRes.value) {
+      const htmlThumb = extractBestThumbFromBrowseHtml(browseRes.value, jsonEv);
+      if (htmlThumb) return htmlThumb;
     }
   }
-  return current;
+
+  return "";
 }
 
-async function searchAll16x9Thumbnails(query) {
-  const cleanQ = String(query || "").trim();
-  if (!cleanQ) return [];
+async function resolveJsonMatchesWith16x9Thumbnails(query) {
+  const catalog = await loadFootxEventsCatalog();
+  if (!catalog.length) return [];
 
-  const browseUrl = `${TSDB_BASE}/browse?s=${encodeURIComponent(cleanQ)}`;
-  const [htmlRes, apiRes, catalogRes] = await Promise.allSettled([
-    fetchResource(browseUrl, false),
-    searchEventsFromApi(cleanQ),
-    loadFootxEventsCatalog(),
-  ]);
-
-  const htmlEvents =
-    htmlRes.status === "fulfilled" ? extractBrowseEventsFromHtml(htmlRes.value) : [];
-  const apiEvents = apiRes.status === "fulfilled" ? apiRes.value : [];
-  const catalog = catalogRes.status === "fulfilled" ? catalogRes.value : [];
-
-  const merged = htmlEvents.length ? htmlEvents : apiEvents;
-
-  if (htmlEvents.length && apiEvents.length) {
-    for (const hEv of merged) {
-      const hName = hEv.title.toLowerCase();
-      const matchApi = apiEvents.find((aEv) => {
-        const aName = aEv.title.toLowerCase();
-        const sameName = aName === hName || aName.includes(hName) || hName.includes(aName);
-        const sameDate = !hEv.rawDate || !aEv.rawDate || hEv.rawDate === aEv.rawDate;
-        return sameName && sameDate;
-      });
-      if (matchApi) {
-        hEv.thumb16x9 = hEv.thumb16x9 || matchApi.thumb16x9;
-        hEv.league = matchApi.league || hEv.league;
-        hEv.venue = matchApi.venue || hEv.venue;
-        hEv.round = matchApi.round || hEv.round;
-        hEv.rawDate = matchApi.rawDate || hEv.rawDate;
-        hEv.rawTime = matchApi.rawTime || hEv.rawTime;
-        hEv.dateDisplay = formatIstFromUtc(hEv.rawDate, hEv.rawTime) || hEv.dateDisplay;
-        hEv.status = computeMatchStatus(hEv.rawDate, hEv.rawTime);
+  let matchedEvents = [];
+  for (const qVar of buildQueryVariations(query)) {
+    const hits = filterCatalogByQuery(catalog, qVar);
+    for (const h of hits) {
+      if (!matchedEvents.some((x) => x.id === h.id)) {
+        matchedEvents.push(h);
       }
     }
   }
 
-  const withThumbs = [];
-  const seenUrls = new Set();
+  matchedEvents = matchedEvents.slice(0, MAX_POOL);
+  if (!matchedEvents.length) return [];
 
-  for (const item of merged.slice(0, MAX_POOL)) {
-    const resolved = await resolveEventDetailsAndThumb16x9(item);
-    if (!resolved.thumb16x9) continue;
-    if (seenUrls.has(resolved.thumb16x9)) continue;
-    seenUrls.add(resolved.thumb16x9);
-    resolved.watchUrl = matchFootxWatchUrl(resolved.title, catalog);
-    withThumbs.push(resolved);
-    if (withThumbs.length >= MAX_POOL) break;
+  const finalCards = [];
+  const seenThumbs = new Set();
+
+  for (const ev of matchedEvents) {
+    const thumb16x9 = await fetchThumbForJsonEvent(ev, query);
+    if (!thumb16x9) continue;
+    if (seenThumbs.has(thumb16x9)) continue;
+    seenThumbs.add(thumb16x9);
+    finalCards.push({ ...ev, thumb16x9 });
+    if (finalCards.length >= MAX_POOL) break;
   }
 
-  return withThumbs;
+  return finalCards;
 }
 
 function formatPremiumCaption(ev, positionNumber, totalCount) {
@@ -467,17 +503,17 @@ function formatPremiumCaption(ev, positionNumber, totalCount) {
   if (ev.dateDisplay) {
     lines.push(`🕒  ${esc(toSmallCaps("SCHEDULE"))}  ⟶  <code>${esc(ev.dateDisplay)}</code>`);
   }
-  if (ev.league) {
-    lines.push(`🏆  ${esc(toSmallCaps("TOURNEY"))}   ⟶  <b>${esc(toSmallCaps(ev.league))}</b>`);
-  }
-  if (ev.round) {
-    lines.push(`🎯  ${esc(toSmallCaps("STAGE"))}     ⟶  <code>${esc(toSmallCaps(`ROUND ${ev.round}`))}</code>`);
-  }
-  if (ev.venue) {
-    lines.push(`🏟  ${esc(toSmallCaps("VENUE"))}     ⟶  <b>${esc(toSmallCaps(ev.venue))}</b>`);
+  if (ev.comp) {
+    lines.push(`🏆  ${esc(toSmallCaps("TOURNEY"))}   ⟶  <b>${esc(toSmallCaps(ev.comp))}</b>`);
+  } else if (ev.sport) {
+    lines.push(`🏆  ${esc(toSmallCaps("SPORT"))}     ⟶  <b>${esc(toSmallCaps(ev.sport))}</b>`);
   }
   if (ev.watchUrl) {
-    lines.push(`🎬  ${esc(toSmallCaps("WATCH"))}     ⟶  <a href="${esc(ev.watchUrl)}">${esc(toSmallCaps("OPEN STREAM"))}</a>`);
+    lines.push(
+      `🎬  ${esc(toSmallCaps("WATCH"))}     ⟶  <a href="${esc(ev.watchUrl)}">${esc(
+        toSmallCaps("OPEN STREAM")
+      )}</a>`
+    );
   }
 
   return lines.join("\n").slice(0, 1020);
@@ -607,7 +643,7 @@ async function dispatchSlice(chatId, batchId, items, startIndex) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === "GET") return res.status(200).send("16:9 Thumbnail & Stream Bot Active");
+  if (req.method === "GET") return res.status(200).send("JSON Match 16:9 Bot Active");
   if (req.method !== "POST") return res.status(405).end();
 
   try {
@@ -653,23 +689,23 @@ export default async function handler(req, res) {
         chatId,
         [
           `╔══════════════════════════╗`,
-          `📌  <b>${esc(toSmallCaps("16:9 THUMBNAIL STUDIO"))}</b>`,
+          `📌  <b>${esc(toSmallCaps("JSON MATCH 16:9 STUDIO"))}</b>`,
           `╚══════════════════════════╝`,
-          `➠  <code>/liverpool vs man city</code>  ⇢  ${esc(toSmallCaps("EX: FOOTBALL MATCH"))}`,
-          `➠  <code>/india vs australia</code>    ⇢  ${esc(toSmallCaps("EX: CRICKET SERIES"))}`,
-          `➠  <code>/f1 monaco</code>           ⇢  ${esc(toSmallCaps("EX: MOTORSPORT EVENT"))}`,
-          `➥  <code>/find &lt;query&gt;</code>         ⇢  ${esc(toSmallCaps("EX: /find arsenal"))}`,
+          `➠  <code>/liverpool vs man city</code>  ⇢  ${esc(toSmallCaps("EX: MATCH IN JSON"))}\n` +
+            `➠  <code>/man city vs liverpool</code>  ⇢  ${esc(toSmallCaps("EX: REVERSE ORDER"))}\n` +
+            `➥  <code>/find &lt;query&gt;</code>         ⇢  ${esc(toSmallCaps("EX: /find arsenal"))}`,
         ].join("\n")
       );
       return res.status(200).json({ ok: true });
     }
 
-    const query = cmd === "/find" || cmd === "/search" ? extra : `${cmd.slice(1)} ${extra}`.trim();
+    const query =
+      cmd === "/find" || cmd === "/search" ? extra : `${cmd.slice(1)} ${extra}`.trim();
     if (!query) {
       await sendText(
         chatId,
         [
-          `📌  <b>${esc(toSmallCaps("ENTER A MATCH OR EVENT QUERY"))}</b>`,
+          `📌  <b>${esc(toSmallCaps("ENTER A MATCH OR TEAM QUERY"))}</b>`,
           `➠  ${esc(toSmallCaps("EXAMPLE"))} 1  ⇢  <code>/liverpool vs man city</code>`,
           `➥  ${esc(toSmallCaps("EXAMPLE"))} 2  ⇢  <code>/india vs australia</code>`,
         ].join("\n\n")
@@ -677,13 +713,13 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    const thumbs = await searchAll16x9Thumbnails(query);
-    if (!thumbs.length) {
+    const cards = await resolveJsonMatchesWith16x9Thumbnails(query);
+    if (!cards.length) {
       await sendText(
         chatId,
         [
           `🛑  <b>${esc(toSmallCaps(query))}</b>`,
-          `➥  ${esc(toSmallCaps("NO 16:9 THUMBNAILS FOUND"))}`,
+          `➥  ${esc(toSmallCaps("NO MATCH FOUND IN FEED OR THUMBNAIL"))}`,
           `➠  ${esc(toSmallCaps("TRY EX"))}  ⇢  <code>/liverpool vs man city</code>`,
         ].join("\n\n")
       );
@@ -691,8 +727,8 @@ export default async function handler(req, res) {
     }
 
     const batchId = makeBatchId(query);
-    saveBatch(batchId, thumbs, query);
-    await dispatchSlice(chatId, batchId, thumbs, 0);
+    saveBatch(batchId, cards, query);
+    await dispatchSlice(chatId, batchId, cards, 0);
 
     return res.status(200).json({ ok: true });
   } catch (err) {
