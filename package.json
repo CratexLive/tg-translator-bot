@@ -1,7 +1,9 @@
 {
-  "name": "cricxcrate-telegram-bot",
+  "name": "sports-stream-bot",
   "version": "1.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "engines": {
+    "node": ">=18.17.0"
+  }
 }
-
