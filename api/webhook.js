@@ -1,6 +1,9 @@
+import crypto from "node:crypto";
+
 const TSDB_BASE = "https://www.thesportsdb.com";
 const TSDB_API_BASE = "https://www.thesportsdb.com/api/v1/json/3";
-const MAX_DIRECT_PHOTOS = 6;
+const BATCH_SIZE = 6;
+const MAX_POOL = 24;
 
 const DEFAULT_HEADERS = {
   "User-Agent":
@@ -34,6 +37,14 @@ function esc(val) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function makeBatchId(query) {
+  return crypto
+    .createHash("sha1")
+    .update(`${String(query).toLowerCase()}|${Date.now()}|${Math.random()}`)
+    .digest("hex")
+    .slice(0, 12);
 }
 
 function resolveUrl(href) {
@@ -179,7 +190,7 @@ function extractBrowseEventsFromHtml(html) {
       thumb16x9: thumbUrl,
     });
 
-    if (results.length >= 20) break;
+    if (results.length >= MAX_POOL) break;
   }
 
   return results;
@@ -195,7 +206,7 @@ async function searchEventsFromApi(query) {
   try {
     const json = await fetchResource(apiUrl, true);
     const events = Array.isArray(json?.event) ? json.event : [];
-    return events.slice(0, 20).map((ev) => {
+    return events.slice(0, MAX_POOL).map((ev) => {
       const eventId = String(ev?.idEvent || "").trim();
       const name = String(ev?.strEvent || "").trim();
       const dateStr = String(ev?.dateEvent || "").trim();
@@ -246,13 +257,13 @@ async function resolveEventDetailsAndThumb16x9(evItem) {
         if (leagueMatch?.[1]) current.league = stripTags(leagueMatch[1]);
       }
     } catch {
-      // Keep existing item fields on page fetch failure
+      // Keep available item metadata
     }
   }
   return current;
 }
 
-async function searchDirect16x9Thumbnails(query) {
+async function searchAll16x9Thumbnails(query) {
   const cleanQ = String(query || "").trim();
   if (!cleanQ) return [];
 
@@ -293,25 +304,25 @@ async function searchDirect16x9Thumbnails(query) {
   const withThumbs = [];
   const seenUrls = new Set();
 
-  for (const item of merged.slice(0, 12)) {
+  for (const item of merged.slice(0, MAX_POOL)) {
     const resolved = await resolveEventDetailsAndThumb16x9(item);
     if (!resolved.thumb16x9) continue;
     if (seenUrls.has(resolved.thumb16x9)) continue;
     seenUrls.add(resolved.thumb16x9);
     withThumbs.push(resolved);
-    if (withThumbs.length >= MAX_DIRECT_PHOTOS) break;
+    if (withThumbs.length >= MAX_POOL) break;
   }
 
   return withThumbs;
 }
 
-function formatPremiumCaption(ev, index, total) {
+function formatPremiumCaption(ev, positionNumber, totalCount) {
   const badge = getStatusBadge(ev.status);
   const lines = [
     `╔══════════════════════════╗`,
     `${badge}  <b>${esc(toSmallCaps(ev.title))}</b>`,
     `╚══════════════════════════╝`,
-    `📌  ${esc(toSmallCaps("CARD"))}      ⟶  <code>#${index + 1} / ${total}</code>`,
+    `📌  ${esc(toSmallCaps("CARD"))}      ⟶  <code>#${positionNumber} / ${totalCount}</code>`,
     `⚡  ${esc(toSmallCaps("STATUS"))}    ⟶  <b>${esc(toSmallCaps(ev.status))}</b>`,
     `📐  ${esc(toSmallCaps("ASPECT"))}    ⟶  <code>16:9 HD</code>`,
   ];
@@ -332,16 +343,17 @@ function formatPremiumCaption(ev, index, total) {
   return lines.join("\n").slice(0, 1020);
 }
 
-async function sendDirectPhoto(chatId, ev, index, total) {
+async function sendPhotoCard(chatId, ev, positionNumber, totalCount, replyMarkup = null) {
   const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
   if (!token) throw new Error("Missing TELEGRAM_TOKEN");
 
   const payload = {
     chat_id: chatId,
     photo: ev.thumb16x9,
-    caption: formatPremiumCaption(ev, index, total),
+    caption: formatPremiumCaption(ev, positionNumber, totalCount),
     parse_mode: "HTML",
   };
+  if (replyMarkup) payload.reply_markup = replyMarkup;
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
     method: "POST",
@@ -356,33 +368,123 @@ async function sendDirectPhoto(chatId, ev, index, total) {
       [
         `📌  <b>${esc(toSmallCaps(ev.title))}</b>`,
         `⚠️  ${esc(toSmallCaps("PHOTO PREVIEW UNAVAILABLE"))}`,
-      ].join("\n\n")
+      ].join("\n\n"),
+      replyMarkup
     );
   }
 }
 
-async function sendText(chatId, text) {
+async function sendText(chatId, text, replyMarkup = null) {
   const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
   if (!token) throw new Error("Missing TELEGRAM_TOKEN");
+
+  const payload = {
+    chat_id: chatId,
+    text: String(text).slice(0, 4090),
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  };
+  if (replyMarkup) payload.reply_markup = replyMarkup;
 
   await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}
+
+async function answerCallback(id, text = "", alert = false) {
+  const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
+  if (!token || !id) return;
+
+  await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      chat_id: chatId,
-      text: String(text).slice(0, 4090),
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
+      callback_query_id: id,
+      text: String(text).slice(0, 195),
+      show_alert: alert,
     }),
   }).catch(() => {});
 }
 
+const batchStore = new Map();
+
+function saveBatch(batchId, items, query) {
+  batchStore.set(batchId, {
+    items,
+    query,
+    exp: Date.now() + 30 * 60 * 1000,
+  });
+}
+
+function getBatch(batchId) {
+  const entry = batchStore.get(batchId);
+  if (!entry) return null;
+  if (Date.now() > entry.exp) {
+    batchStore.delete(batchId);
+    return null;
+  }
+  return entry;
+}
+
+function buildMoreKeyboard(batchId, nextOffset, totalCount) {
+  const remaining = Math.max(0, totalCount - nextOffset);
+  const nextCount = Math.min(BATCH_SIZE, remaining);
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: `➔  ${toSmallCaps(`MORE ( +${nextCount} )`)}`,
+          callback_data: `more:${batchId}:${nextOffset}`,
+        },
+      ],
+    ],
+  };
+}
+
+async function dispatchSlice(chatId, batchId, items, startIndex) {
+  const total = items.length;
+  const endIndex = Math.min(total, startIndex + BATCH_SIZE);
+  const hasMore = endIndex < total;
+
+  for (let i = startIndex; i < endIndex; i++) {
+    const isLastInBatch = i === endIndex - 1;
+    const markup = isLastInBatch && hasMore ? buildMoreKeyboard(batchId, endIndex, total) : null;
+    await sendPhotoCard(chatId, items[i], i + 1, total, markup);
+  }
+}
+
 export default async function handler(req, res) {
-  if (req.method === "GET") return res.status(200).send("Direct 16:9 Thumbnail Bot Active");
+  if (req.method === "GET") return res.status(200).send("16:9 Thumbnail Bot Active");
   if (req.method !== "POST") return res.status(405).end();
 
   try {
     const update = req.body || {};
+
+    if (update.callback_query) {
+      const cq = update.callback_query;
+      const chatId = cq?.message?.chat?.id;
+      const data = String(cq?.data || "");
+      const [prefix, batchId, offsetStr] = data.split(":");
+
+      if (chatId && prefix === "more") {
+        const batch = getBatch(batchId);
+        const offset = Number(offsetStr || 0);
+
+        if (!batch || !Array.isArray(batch.items) || offset >= batch.items.length) {
+          await answerCallback(cq.id, toSmallCaps("NO MORE RESULTS OR EXPIRED"), true);
+          return res.status(200).json({ ok: true });
+        }
+
+        await answerCallback(cq.id, toSmallCaps("LOADING MORE 16:9 CARDS"));
+        await dispatchSlice(chatId, batchId, batch.items, offset);
+        return res.status(200).json({ ok: true });
+      }
+
+      return res.status(200).json({ ok: true });
+    }
+
     const msg = update.message || update.edited_message;
     const chatId = msg?.chat?.id;
     const rawText = String(msg?.text || "").trim();
@@ -402,9 +504,10 @@ export default async function handler(req, res) {
           `╔══════════════════════════╗`,
           `📌  <b>${esc(toSmallCaps("16:9 THUMBNAIL STUDIO"))}</b>`,
           `╚══════════════════════════╝`,
-          `➠  <code>/liverpool vs man city</code>  ⇢  ${esc(toSmallCaps("DIRECT MATCH CARDS"))}`,
-          `➠  <code>/india vs australia</code>    ⇢  ${esc(toSmallCaps("INSTANT 16:9 FETCH"))}`,
-          `➥  <code>/find &lt;query&gt;</code>         ⇢  ${esc(toSmallCaps("CUSTOM SEARCH QUERY"))}`,
+          `➠  <code>/liverpool vs man city</code>  ⇢  ${esc(toSmallCaps("EX: FOOTBALL MATCH"))}`,
+          `➠  <code>/india vs australia</code>    ⇢  ${esc(toSmallCaps("EX: CRICKET SERIES"))}`,
+          `➠  <code>/f1 monaco</code>           ⇢  ${esc(toSmallCaps("EX: MOTORSPORT EVENT"))}`,
+          `➥  <code>/find &lt;query&gt;</code>         ⇢  ${esc(toSmallCaps("EX: /find arsenal"))}`,
         ].join("\n")
       );
       return res.status(200).json({ ok: true });
@@ -414,26 +517,35 @@ export default async function handler(req, res) {
     if (!query) {
       await sendText(
         chatId,
-        `📌  <b>${esc(toSmallCaps("ENTER A MATCH OR TEAM QUERY"))}</b>\n\n➥  <code>/liverpool vs man city</code>`
+        [
+          `📌  <b>${esc(toSmallCaps("ENTER A MATCH OR EVENT QUERY"))}</b>`,
+          `➠  ${esc(toSmallCaps("EXAMPLE"))} 1  ⇢  <code>/liverpool vs man city</code>`,
+          `➥  ${esc(toSmallCaps("EXAMPLE"))} 2  ⇢  <code>/india vs australia</code>`,
+        ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
     }
 
-    const thumbs = await searchDirect16x9Thumbnails(query);
+    const thumbs = await searchAll16x9Thumbnails(query);
     if (!thumbs.length) {
       await sendText(
         chatId,
-        `🛑  <b>${esc(toSmallCaps(query))}</b>\n\n➥  ${esc(toSmallCaps("NO MATCHING 16:9 THUMBNAILS"))}`
+        [
+          `🛑  <b>${esc(toSmallCaps(query))}</b>`,
+          `➥  ${esc(toSmallCaps("NO 16:9 THUMBNAILS FOUND"))}`,
+          `➠  ${esc(toSmallCaps("TRY EX"))}  ⇢  <code>/liverpool vs man city</code>`,
+        ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
     }
 
-    for (let i = 0; i < thumbs.length; i++) {
-      await sendDirectPhoto(chatId, thumbs[i], i, thumbs.length);
-    }
+    const batchId = makeBatchId(query);
+    saveBatch(batchId, thumbs, query);
+    await dispatchSlice(chatId, batchId, thumbs, 0);
 
     return res.status(200).json({ ok: true });
   } catch (err) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
+
