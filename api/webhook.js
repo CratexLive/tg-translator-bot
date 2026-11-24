@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 const TSDB_BASE = "https://www.thesportsdb.com";
 const TSDB_API_BASE = "https://www.thesportsdb.com/api/v1/json/3";
 const MAX_DIRECT_PHOTOS = 6;
@@ -69,6 +67,60 @@ function normalizeThumb16x9(url) {
   return clean.replace(/\/(preview|tiny|small)$/i, "");
 }
 
+function formatIstFromUtc(dateStr, timeStr) {
+  const d = String(dateStr || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "";
+  const cleanTime = String(timeStr || "00:00:00").trim();
+  const iso = `${d}T${/^\d{2}:\d{2}/.test(cleanTime) ? cleanTime : "00:00:00"}Z`;
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return d;
+
+  const hasClock = /^\d{2}:\d{2}/.test(cleanTime) && cleanTime !== "00:00:00";
+  if (!hasClock) {
+    return new Date(parsed).toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  return (
+    new Date(parsed).toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }) + " IST"
+  );
+}
+
+function computeMatchStatus(dateStr, timeStr) {
+  const d = String(dateStr || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "SCHEDULED";
+  const cleanTime = String(timeStr || "").trim();
+  if (!/^\d{2}:\d{2}/.test(cleanTime) || cleanTime === "00:00:00") return "SCHEDULED";
+
+  const startMs = Date.parse(`${d}T${cleanTime}Z`);
+  if (!Number.isFinite(startMs)) return "SCHEDULED";
+
+  const now = Date.now();
+  const estDurationMs = 3 * 60 * 60 * 1000;
+  if (now >= startMs && now <= startMs + estDurationMs) return "LIVE";
+  if (now > startMs + estDurationMs) return "COMPLETED";
+  return "UPCOMING";
+}
+
+function getStatusBadge(status) {
+  if (status === "LIVE") return "🔺";
+  if (status === "UPCOMING") return "⏳";
+  if (status === "COMPLETED") return "🔻";
+  return "📌";
+}
+
 async function fetchResource(url, asJson = false) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
@@ -110,13 +162,19 @@ function extractBrowseEventsFromHtml(html) {
     if (!titleText) continue;
 
     const dateMatch = titleText.match(/\((\d{4}-\d{2}-\d{2})\)/);
-    const dateStr = dateMatch ? dateMatch[1] : "";
+    const rawDate = dateMatch ? dateMatch[1] : "";
+    const cleanTitle = titleText.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, "").trim() || titleText;
 
     seen.add(eventUrl.toLowerCase());
     results.push({
-      title: titleText,
-      date: dateStr,
+      title: cleanTitle,
+      rawDate,
+      rawTime: "",
+      dateDisplay: formatIstFromUtc(rawDate, ""),
+      status: computeMatchStatus(rawDate, ""),
       league: "",
+      venue: "",
+      round: "",
       eventUrl,
       thumb16x9: thumbUrl,
     });
@@ -143,16 +201,22 @@ async function searchEventsFromApi(query) {
       const dateStr = String(ev?.dateEvent || "").trim();
       const timeStr = String(ev?.strTime || "").trim();
       const league = String(ev?.strLeague || "").trim();
-      const title = dateStr ? `${name} (${dateStr})` : name;
+      const venue = String(ev?.strVenue || "").trim();
+      const round = String(ev?.intRound || "").trim();
       const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const eventUrl = eventId
         ? `${TSDB_BASE}/event/${eventId}${slug ? `-${slug}` : ""}`
         : TSDB_BASE;
 
       return {
-        title,
-        date: timeStr ? `${dateStr} • ${timeStr} UTC` : dateStr,
+        title: name,
+        rawDate: dateStr,
+        rawTime: timeStr,
+        dateDisplay: formatIstFromUtc(dateStr, timeStr),
+        status: computeMatchStatus(dateStr, timeStr),
         league,
+        venue,
+        round,
         eventUrl,
         thumb16x9: normalizeThumb16x9(ev?.strThumb || ""),
       };
@@ -162,29 +226,30 @@ async function searchEventsFromApi(query) {
   }
 }
 
-async function resolveEventThumb16x9(evItem) {
-  if (evItem.thumb16x9) return evItem;
-  if (!evItem?.eventUrl || evItem.eventUrl === TSDB_BASE) return evItem;
-
-  try {
-    const html = await fetchResource(evItem.eventUrl, false);
-    const thumbMatch = html.match(
-      /https?:\/\/r2\.thesportsdb\.com\/images\/media\/event\/thumb\/[^\s"'<>]+/i
-    );
-    const dateBlockMatch =
-      html.match(/Date\s*&amp;\s*Time<\/h\d>\s*<[^>]+>([^<]+)</i) ||
-      html.match(
-        /Date\s*&\s*Time[\s\S]{0,120}?([A-Za-z]{3}\s+\d{1,2}[a-z]{2}\s+[A-Za-z]+\s+\d{4}\s+\d{1,2}:\d{2}[ap]m\s+UTC)/i
+async function resolveEventDetailsAndThumb16x9(evItem) {
+  let current = { ...evItem };
+  if (!current.thumb16x9 && current.eventUrl && current.eventUrl !== TSDB_BASE) {
+    try {
+      const html = await fetchResource(current.eventUrl, false);
+      const thumbMatch = html.match(
+        /https?:\/\/r2\.thesportsdb\.com\/images\/media\/event\/thumb\/[^\s"'<>]+/i
       );
-
-    return {
-      ...evItem,
-      thumb16x9: normalizeThumb16x9(thumbMatch?.[0] || ""),
-      date: dateBlockMatch?.[1]?.trim() || evItem.date,
-    };
-  } catch {
-    return evItem;
+      if (thumbMatch?.[0]) {
+        current.thumb16x9 = normalizeThumb16x9(thumbMatch[0]);
+      }
+      if (!current.venue) {
+        const venueMatch = html.match(/Venue<\/h\d>\s*<[^>]+>([^<]+)</i);
+        if (venueMatch?.[1]) current.venue = stripTags(venueMatch[1]);
+      }
+      if (!current.league) {
+        const leagueMatch = html.match(/League<\/h\d>\s*<[^>]+>([^<]+)</i);
+        if (leagueMatch?.[1]) current.league = stripTags(leagueMatch[1]);
+      }
+    } catch {
+      // Keep existing item fields on page fetch failure
+    }
   }
+  return current;
 }
 
 async function searchDirect16x9Thumbnails(query) {
@@ -205,15 +270,22 @@ async function searchDirect16x9Thumbnails(query) {
 
   if (htmlEvents.length && apiEvents.length) {
     for (const hEv of merged) {
-      const baseName = hEv.title.replace(/\(\d{4}-\d{2}-\d{2}\)/g, "").trim().toLowerCase();
+      const hName = hEv.title.toLowerCase();
       const matchApi = apiEvents.find((aEv) => {
-        const aBase = aEv.title.replace(/\(\d{4}-\d{2}-\d{2}\)/g, "").trim().toLowerCase();
-        return aBase === baseName && (!hEv.date || aEv.date.startsWith(hEv.date));
+        const aName = aEv.title.toLowerCase();
+        const sameName = aName === hName || aName.includes(hName) || hName.includes(aName);
+        const sameDate = !hEv.rawDate || !aEv.rawDate || hEv.rawDate === aEv.rawDate;
+        return sameName && sameDate;
       });
       if (matchApi) {
         hEv.thumb16x9 = hEv.thumb16x9 || matchApi.thumb16x9;
         hEv.league = matchApi.league || hEv.league;
-        if (matchApi.date) hEv.date = matchApi.date;
+        hEv.venue = matchApi.venue || hEv.venue;
+        hEv.round = matchApi.round || hEv.round;
+        hEv.rawDate = matchApi.rawDate || hEv.rawDate;
+        hEv.rawTime = matchApi.rawTime || hEv.rawTime;
+        hEv.dateDisplay = formatIstFromUtc(hEv.rawDate, hEv.rawTime) || hEv.dateDisplay;
+        hEv.status = computeMatchStatus(hEv.rawDate, hEv.rawTime);
       }
     }
   }
@@ -222,7 +294,7 @@ async function searchDirect16x9Thumbnails(query) {
   const seenUrls = new Set();
 
   for (const item of merged.slice(0, 12)) {
-    const resolved = await resolveEventThumb16x9(item);
+    const resolved = await resolveEventDetailsAndThumb16x9(item);
     if (!resolved.thumb16x9) continue;
     if (seenUrls.has(resolved.thumb16x9)) continue;
     seenUrls.add(resolved.thumb16x9);
@@ -233,37 +305,43 @@ async function searchDirect16x9Thumbnails(query) {
   return withThumbs;
 }
 
-function formatCaption(ev) {
+function formatPremiumCaption(ev, index, total) {
+  const badge = getStatusBadge(ev.status);
   const lines = [
-    `📌  <b>${esc(toSmallCaps(ev.title))}</b>`,
-    `➠  ${esc(toSmallCaps("FORMAT"))}  ⇢  <b>${esc(toSmallCaps("16:9 THUMB"))}</b>`,
+    `╔══════════════════════════╗`,
+    `${badge}  <b>${esc(toSmallCaps(ev.title))}</b>`,
+    `╚══════════════════════════╝`,
+    `📌  ${esc(toSmallCaps("CARD"))}      ⟶  <code>#${index + 1} / ${total}</code>`,
+    `⚡  ${esc(toSmallCaps("STATUS"))}    ⟶  <b>${esc(toSmallCaps(ev.status))}</b>`,
+    `📐  ${esc(toSmallCaps("ASPECT"))}    ⟶  <code>16:9 HD</code>`,
   ];
-  if (ev.date) {
-    lines.push(`⏳  ${esc(toSmallCaps("DATE & TIME"))}  ⇢  <code>${esc(ev.date)}</code>`);
+
+  if (ev.dateDisplay) {
+    lines.push(`🕒  ${esc(toSmallCaps("SCHEDULE"))}  ⟶  <code>${esc(ev.dateDisplay)}</code>`);
   }
   if (ev.league) {
-    lines.push(`🧩  ${esc(toSmallCaps("LEAGUE"))}  ⇢  <b>${esc(toSmallCaps(ev.league))}</b>`);
+    lines.push(`🏆  ${esc(toSmallCaps("TOURNEY"))}   ⟶  <b>${esc(toSmallCaps(ev.league))}</b>`);
   }
-  lines.push(`➥  ${esc(toSmallCaps("SOURCE"))}  ⇢  <b>${esc(toSmallCaps("THESPORTSDB"))}</b>`);
-  return lines.join("\n\n").slice(0, 1020);
+  if (ev.round) {
+    lines.push(`🎯  ${esc(toSmallCaps("STAGE"))}     ⟶  <code>${esc(toSmallCaps(`ROUND ${ev.round}`))}</code>`);
+  }
+  if (ev.venue) {
+    lines.push(`🏟  ${esc(toSmallCaps("VENUE"))}     ⟶  <b>${esc(toSmallCaps(ev.venue))}</b>`);
+  }
+
+  return lines.join("\n").slice(0, 1020);
 }
 
-async function sendDirectPhoto(chatId, ev) {
+async function sendDirectPhoto(chatId, ev, index, total) {
   const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
   if (!token) throw new Error("Missing TELEGRAM_TOKEN");
 
   const payload = {
     chat_id: chatId,
     photo: ev.thumb16x9,
-    caption: formatCaption(ev),
+    caption: formatPremiumCaption(ev, index, total),
     parse_mode: "HTML",
   };
-
-  if (/^https:\/\//i.test(ev.thumb16x9) && ev.thumb16x9.length <= 2048) {
-    payload.reply_markup = {
-      inline_keyboard: [[{ text: `➔  ${toSmallCaps("OPEN FULL IMAGE")}`, url: ev.thumb16x9 }]],
-    };
-  }
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
     method: "POST",
@@ -277,7 +355,7 @@ async function sendDirectPhoto(chatId, ev) {
       chatId,
       [
         `📌  <b>${esc(toSmallCaps(ev.title))}</b>`,
-        `➠  ${esc(toSmallCaps("IMAGE URL"))}  ⇢  <code>${esc(ev.thumb16x9)}</code>`,
+        `⚠️  ${esc(toSmallCaps("PHOTO PREVIEW UNAVAILABLE"))}`,
       ].join("\n\n")
     );
   }
@@ -300,7 +378,7 @@ async function sendText(chatId, text) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === "GET") return res.status(200).send("TheSportsDB Direct 16:9 Bot Active");
+  if (req.method === "GET") return res.status(200).send("Direct 16:9 Thumbnail Bot Active");
   if (req.method !== "POST") return res.status(405).end();
 
   try {
@@ -321,19 +399,22 @@ export default async function handler(req, res) {
       await sendText(
         chatId,
         [
-          `📌  <b>${esc(toSmallCaps("THESPORTSDB 16:9 BOT"))}</b>`,
-          `➠  <code>/liverpool vs man city</code>  ⇢  ${esc(toSmallCaps("DIRECT 16:9 THUMBNAILS"))}`,
-          `➥  <code>/tsdb &lt;query&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH MATCH THUMBNAILS"))}`,
-        ].join("\n\n")
+          `╔══════════════════════════╗`,
+          `📌  <b>${esc(toSmallCaps("16:9 THUMBNAIL STUDIO"))}</b>`,
+          `╚══════════════════════════╝`,
+          `➠  <code>/liverpool vs man city</code>  ⇢  ${esc(toSmallCaps("DIRECT MATCH CARDS"))}`,
+          `➠  <code>/india vs australia</code>    ⇢  ${esc(toSmallCaps("INSTANT 16:9 FETCH"))}`,
+          `➥  <code>/find &lt;query&gt;</code>         ⇢  ${esc(toSmallCaps("CUSTOM SEARCH QUERY"))}`,
+        ].join("\n")
       );
       return res.status(200).json({ ok: true });
     }
 
-    const query = cmd === "/tsdb" ? extra : `${cmd.slice(1)} ${extra}`.trim();
+    const query = cmd === "/find" || cmd === "/search" ? extra : `${cmd.slice(1)} ${extra}`.trim();
     if (!query) {
       await sendText(
         chatId,
-        `📌  <b>${esc(toSmallCaps("ENTER MATCH OR TEAM NAME"))}</b>\n\n➥  <code>/liverpool vs man city</code>`
+        `📌  <b>${esc(toSmallCaps("ENTER A MATCH OR TEAM QUERY"))}</b>\n\n➥  <code>/liverpool vs man city</code>`
       );
       return res.status(200).json({ ok: true });
     }
@@ -342,13 +423,13 @@ export default async function handler(req, res) {
     if (!thumbs.length) {
       await sendText(
         chatId,
-        `🛑  <b>${esc(toSmallCaps(query))}</b>\n\n➥  ${esc(toSmallCaps("NO 16:9 THUMBNAILS FOUND"))}`
+        `🛑  <b>${esc(toSmallCaps(query))}</b>\n\n➥  ${esc(toSmallCaps("NO MATCHING 16:9 THUMBNAILS"))}`
       );
       return res.status(200).json({ ok: true });
     }
 
-    for (const ev of thumbs) {
-      await sendDirectPhoto(chatId, ev);
+    for (let i = 0; i < thumbs.length; i++) {
+      await sendDirectPhoto(chatId, thumbs[i], i, thumbs.length);
     }
 
     return res.status(200).json({ ok: true });
