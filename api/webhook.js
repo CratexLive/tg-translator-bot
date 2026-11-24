@@ -2,6 +2,13 @@ import crypto from "node:crypto";
 
 const TSDB_BASE = "https://www.thesportsdb.com";
 const TSDB_API_BASE = "https://www.thesportsdb.com/api/v1/json/3";
+const FOOTX_WATCH_BASE = "https://footxcrate.pages.dev/45#watch";
+
+const FOOTX_DATA_URLS = [
+  "https://sonujson-v6.pages.dev/Data/events/allinone.json",
+  "https://raw.githubusercontent.com/sm-monirulislam/Upcoming-and-Live-Sports-Data/main/Sports_data.json",
+];
+
 const BATCH_SIZE = 6;
 const MAX_POOL = 24;
 
@@ -78,6 +85,16 @@ function normalizeThumb16x9(url) {
   return clean.replace(/\/(preview|tiny|small)$/i, "");
 }
 
+function normalizeWords(str) {
+  return String(str || "")
+    .toLowerCase()
+    .replace(/\b(fc|wfc|women|men|u19|u21|u23|xi|ii)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
 function formatIstFromUtc(dateStr, timeStr) {
   const d = String(dateStr || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "";
@@ -148,6 +165,121 @@ async function fetchResource(url, asJson = false) {
   }
 }
 
+function parseFootxEvents(data) {
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.events)
+    ? data.events
+    : Array.isArray(data?.matches)
+    ? data.matches
+    : Object.values(data || {});
+
+  if (!Array.isArray(list)) return [];
+  const parsed = [];
+
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const info = item.event || item.eventInfo || item.matchInfo || item;
+    const teamA = String(info.teamA || info.home || item.homeTeam || item.title || "").trim();
+    const teamB = String(info.teamB || info.away || item.awayTeam || "").trim();
+    const matchTitle = String(
+      item.title ||
+        item.event_name ||
+        (teamA && teamB ? `${teamA} vs ${teamB}` : info.eventName || item.name || "")
+    ).trim();
+
+    if (!matchTitle) continue;
+
+    const eventId = String(item.id || matchTitle.toLowerCase().replace(/[^a-z0-9]/g, "")).trim();
+    const rawStreams = Array.isArray(item.streams)
+      ? item.streams
+      : Array.isArray(info.streams)
+      ? info.streams
+      : [];
+
+    const streams = [];
+    for (let i = 0; i < rawStreams.length; i++) {
+      const s = rawStreams[i];
+      if (!s) continue;
+      const channelName = String(s.channel_name || s.title || s.name || `Stream ${i + 1}`).trim();
+      const streamId = channelName.toLowerCase().replace(/[^a-z0-9]/g, "_") || `stream_${i + 1}`;
+      streams.push({
+        id: streamId,
+        title: channelName,
+      });
+    }
+
+    parsed.push({
+      id: eventId,
+      title: matchTitle,
+      teamA,
+      teamB,
+      streams,
+    });
+  }
+
+  return parsed;
+}
+
+async function loadFootxEventsCatalog() {
+  const results = await Promise.allSettled(
+    FOOTX_DATA_URLS.map((u) => fetchResource(u, true))
+  );
+
+  const combined = [];
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value) {
+      combined.push(...parseFootxEvents(r.value));
+    }
+  }
+
+  const byId = new Map();
+  for (const ev of combined) {
+    if (!ev.id) continue;
+    if (!byId.has(ev.id)) {
+      byId.set(ev.id, { ...ev, streams: [...ev.streams] });
+    } else {
+      const existing = byId.get(ev.id);
+      for (const st of ev.streams) {
+        if (!existing.streams.some((x) => x.id === st.id)) {
+          existing.streams.push(st);
+        }
+      }
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
+function matchFootxWatchUrl(evTitle, catalog) {
+  if (!Array.isArray(catalog) || !catalog.length) return "";
+  const evTokens = new Set(normalizeWords(evTitle));
+  if (!evTokens.size) return "";
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const item of catalog) {
+    const candTokens = normalizeWords(`${item.title} ${item.teamA} ${item.teamB}`);
+    if (!candTokens.length) continue;
+
+    let overlap = 0;
+    for (const tok of candTokens) {
+      if (evTokens.has(tok)) overlap += 1;
+    }
+
+    const score = overlap / Math.max(candTokens.length, 1);
+    if (overlap >= 2 && score > bestScore) {
+      bestScore = score;
+      best = item;
+    }
+  }
+
+  if (!best) return "";
+  const firstStreamId = best.streams?.[0]?.id || "0";
+  return `${FOOTX_WATCH_BASE}?id=${encodeURIComponent(best.id)}&stream_id=${encodeURIComponent(firstStreamId)}`;
+}
+
 function extractBrowseEventsFromHtml(html) {
   const results = [];
   const seen = new Set();
@@ -188,6 +320,7 @@ function extractBrowseEventsFromHtml(html) {
       round: "",
       eventUrl,
       thumb16x9: thumbUrl,
+      watchUrl: "",
     });
 
     if (results.length >= MAX_POOL) break;
@@ -230,6 +363,7 @@ async function searchEventsFromApi(query) {
         round,
         eventUrl,
         thumb16x9: normalizeThumb16x9(ev?.strThumb || ""),
+        watchUrl: "",
       };
     });
   } catch {
@@ -268,14 +402,16 @@ async function searchAll16x9Thumbnails(query) {
   if (!cleanQ) return [];
 
   const browseUrl = `${TSDB_BASE}/browse?s=${encodeURIComponent(cleanQ)}`;
-  const [htmlRes, apiRes] = await Promise.allSettled([
+  const [htmlRes, apiRes, catalogRes] = await Promise.allSettled([
     fetchResource(browseUrl, false),
     searchEventsFromApi(cleanQ),
+    loadFootxEventsCatalog(),
   ]);
 
   const htmlEvents =
     htmlRes.status === "fulfilled" ? extractBrowseEventsFromHtml(htmlRes.value) : [];
   const apiEvents = apiRes.status === "fulfilled" ? apiRes.value : [];
+  const catalog = catalogRes.status === "fulfilled" ? catalogRes.value : [];
 
   const merged = htmlEvents.length ? htmlEvents : apiEvents;
 
@@ -309,6 +445,7 @@ async function searchAll16x9Thumbnails(query) {
     if (!resolved.thumb16x9) continue;
     if (seenUrls.has(resolved.thumb16x9)) continue;
     seenUrls.add(resolved.thumb16x9);
+    resolved.watchUrl = matchFootxWatchUrl(resolved.title, catalog);
     withThumbs.push(resolved);
     if (withThumbs.length >= MAX_POOL) break;
   }
@@ -339,8 +476,32 @@ function formatPremiumCaption(ev, positionNumber, totalCount) {
   if (ev.venue) {
     lines.push(`🏟  ${esc(toSmallCaps("VENUE"))}     ⟶  <b>${esc(toSmallCaps(ev.venue))}</b>`);
   }
+  if (ev.watchUrl) {
+    lines.push(`🎬  ${esc(toSmallCaps("WATCH"))}     ⟶  <a href="${esc(ev.watchUrl)}">${esc(toSmallCaps("OPEN STREAM"))}</a>`);
+  }
 
   return lines.join("\n").slice(0, 1020);
+}
+
+function buildCardKeyboard(ev, batchId, nextOffset, totalCount) {
+  const rows = [];
+
+  if (ev?.watchUrl && /^https:\/\//i.test(ev.watchUrl) && ev.watchUrl.length <= 2048) {
+    rows.push([{ text: `🎬  ${toSmallCaps("WATCH STREAM")}`, url: ev.watchUrl }]);
+  }
+
+  if (batchId && nextOffset < totalCount) {
+    const remaining = Math.max(0, totalCount - nextOffset);
+    const nextCount = Math.min(BATCH_SIZE, remaining);
+    rows.push([
+      {
+        text: `➔  ${toSmallCaps(`MORE ( +${nextCount} )`)}`,
+        callback_data: `more:${batchId}:${nextOffset}`,
+      },
+    ]);
+  }
+
+  return rows.length ? { inline_keyboard: rows } : null;
 }
 
 async function sendPhotoCard(chatId, ev, positionNumber, totalCount, replyMarkup = null) {
@@ -428,21 +589,6 @@ function getBatch(batchId) {
   return entry;
 }
 
-function buildMoreKeyboard(batchId, nextOffset, totalCount) {
-  const remaining = Math.max(0, totalCount - nextOffset);
-  const nextCount = Math.min(BATCH_SIZE, remaining);
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: `➔  ${toSmallCaps(`MORE ( +${nextCount} )`)}`,
-          callback_data: `more:${batchId}:${nextOffset}`,
-        },
-      ],
-    ],
-  };
-}
-
 async function dispatchSlice(chatId, batchId, items, startIndex) {
   const total = items.length;
   const endIndex = Math.min(total, startIndex + BATCH_SIZE);
@@ -450,13 +596,18 @@ async function dispatchSlice(chatId, batchId, items, startIndex) {
 
   for (let i = startIndex; i < endIndex; i++) {
     const isLastInBatch = i === endIndex - 1;
-    const markup = isLastInBatch && hasMore ? buildMoreKeyboard(batchId, endIndex, total) : null;
+    const markup = buildCardKeyboard(
+      items[i],
+      isLastInBatch && hasMore ? batchId : null,
+      endIndex,
+      total
+    );
     await sendPhotoCard(chatId, items[i], i + 1, total, markup);
   }
 }
 
 export default async function handler(req, res) {
-  if (req.method === "GET") return res.status(200).send("16:9 Thumbnail Bot Active");
+  if (req.method === "GET") return res.status(200).send("16:9 Thumbnail & Stream Bot Active");
   if (req.method !== "POST") return res.status(405).end();
 
   try {
@@ -548,4 +699,3 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
-
