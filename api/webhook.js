@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 
 const SPORTLINK_URL = "https://sportlink-tv11.pages.dev/Data.json";
+const WILLOW_URL =
+  "https://raw.githubusercontent.com/srhady/willow-event/refs/heads/main/live_sports.json";
 
 const REQUIRED_CHANNELS = [
   {
@@ -66,31 +68,63 @@ function makeId(raw) {
   return crypto.createHash("sha1").update(String(raw || "").toLowerCase()).digest("hex").slice(0, 14);
 }
 
-function buildNsPlayerLink(ch) {
-  const streamUrl = String(ch?.stream_url || "").trim();
-  if (!streamUrl) return "";
+function buildJioNsLink({ streamUrl, cookie = "", keys = [] }) {
+  const cleanUrl = String(streamUrl || "").trim();
+  if (!cleanUrl) return "";
 
-  const rawCookie = String(ch?.cookie || "").trim().replace(/^Cookie=/i, "");
-  const sep = streamUrl.includes("?") ? "&" : "?";
-  const urlWithQuery = rawCookie ? `${streamUrl}${sep}${rawCookie}` : streamUrl;
+  const rawCookie = String(cookie || "").trim().replace(/^Cookie=/i, "");
+  const sep = cleanUrl.includes("?") ? "&" : "?";
+  const urlWithQuery = rawCookie ? `${cleanUrl}${sep}${rawCookie}` : cleanUrl;
 
-  const keys = Array.isArray(ch?.sportlink) && ch.sportlink.length
-    ? ch.sportlink.map((k) => String(k || "").trim()).filter(Boolean)
-    : ch?.key_id && ch?.key
-      ? [`${String(ch.key_id).trim()}:${String(ch.key).trim()}`]
-      : [];
+  const cleanKeys = (Array.isArray(keys) ? keys : [])
+    .map((k) => String(k || "").trim())
+    .filter(Boolean);
 
   const parts = [];
   if (rawCookie) parts.push(`Cookie=${rawCookie}`);
   parts.push("User-Agent=Virat");
   parts.push("Referer=https://www.jiotv.com/");
   parts.push("Origin=https://www.jiotv.com/");
-  if (keys.length) {
+  if (cleanKeys.length) {
     parts.push("drmScheme=clearkey");
-    parts.push(`drmLicense=${keys.join(",")}`);
+    parts.push(`drmLicense=${cleanKeys.join(",")}`);
   }
 
   return `${urlWithQuery}|${parts.join("&")}`;
+}
+
+function buildWillowNsLink(streamUrl, drmKey = "") {
+  const cleanUrl = String(streamUrl || "").trim();
+  if (!cleanUrl) return "";
+
+  const cleanKey = String(drmKey || "").trim();
+  if (!cleanKey) return cleanUrl;
+
+  return `${cleanUrl}|drmScheme=clearkey&drmLicense=${cleanKey}`;
+}
+
+function extractWillowStreams(match) {
+  const drmKey = String(match?.drm_key || "").trim();
+  const streams = [];
+
+  const groups = [
+    { obj: match?.stream_url_alpha, tag: "ALPHA" },
+    { obj: match?.stream_url_bravo, tag: "BRAVO" },
+  ];
+
+  for (const { obj, tag } of groups) {
+    if (!obj || typeof obj !== "object") continue;
+    for (const [serverName, url] of Object.entries(obj)) {
+      const link = buildWillowNsLink(url, drmKey);
+      if (!link) continue;
+      streams.push({
+        server: `${tag} • ${String(serverName).trim()}`,
+        link,
+      });
+    }
+  }
+
+  return streams;
 }
 
 async function fetchJson(url, timeoutMs = 6000) {
@@ -109,33 +143,82 @@ async function fetchJson(url, timeoutMs = 6000) {
   }
 }
 
-async function loadSportlinkChannels() {
-  const cached = getCached("sportlink:channels");
+async function loadSportlinkItems() {
+  const cached = getCached("src:sportlink");
   if (cached) return cached;
 
   const data = await fetchJson(SPORTLINK_URL);
   const rawList = Array.isArray(data?.channels) ? data.channels : [];
-  const lastUpdated = String(data?.last_updated || "").trim();
   const items = [];
 
   for (const ch of rawList) {
     const name = String(ch?.name || "").trim();
-    const nsLink = buildNsPlayerLink(ch);
+    const keys = Array.isArray(ch?.sportlink) && ch.sportlink.length
+      ? ch.sportlink
+      : ch?.key_id && ch?.key
+        ? [`${ch.key_id}:${ch.key}`]
+        : [];
+    const nsLink = buildJioNsLink({
+      streamUrl: ch?.stream_url,
+      cookie: ch?.cookie,
+      keys,
+    });
     if (!name || !nsLink) continue;
 
-    const id = String(ch?.id || "").trim() || makeId(`${name}|${ch?.stream_url || ""}`);
+    const id = makeId(`sl|${ch?.id || ""}|${name}`);
     items.push({
       id,
-      name,
-      logo: String(ch?.logo || "").trim(),
-      nsLink,
-      expireIst: String(ch?.cookie_expire_ist || "").trim(),
-      lastUpdated,
-      searchText: `${id} ${name} sportlink jio`.toLowerCase(),
+      source: "SPORTLINK",
+      title: name,
+      meta: ch?.cookie_expire_ist ? `EXPIRE • ${ch.cookie_expire_ist}` : "JIO SPORTLINK",
+      streams: [{ server: "JioTV MPD", link: nsLink }],
+      searchText: `${ch?.id || ""} ${name} sportlink jio`.toLowerCase(),
     });
   }
 
-  return setCached("sportlink:channels", items);
+  return setCached("src:sportlink", items);
+}
+
+async function loadWillowItems() {
+  const cached = getCached("src:willow");
+  if (cached) return cached;
+
+  const data = await fetchJson(WILLOW_URL);
+  const matches = Array.isArray(data?.Matches) ? data.Matches : [];
+  const items = [];
+
+  for (const m of matches) {
+    const title = String(m?.title || "").trim();
+    if (!title) continue;
+
+    const streams = extractWillowStreams(m);
+    const status = String(m?.status || "UPCOMING").trim().toUpperCase();
+    const timeText = String(m?.time || "").trim();
+    const id = makeId(`wl|${m?.match_id || ""}|${title}`);
+
+    items.push({
+      id,
+      source: "WILLOW",
+      title,
+      status,
+      meta: `${status}${timeText ? ` • ${timeText}` : ""}`,
+      streams,
+      searchText: `${m?.match_id || ""} ${title} ${m?.synopsis || ""} ${status} ${timeText} willow`.toLowerCase(),
+    });
+  }
+
+  return setCached("src:willow", items);
+}
+
+async function loadAllItems(sourceFilter = "all") {
+  if (sourceFilter === "sportlink") return loadSportlinkItems();
+  if (sourceFilter === "willow") return loadWillowItems();
+
+  const [sl, wl] = await Promise.allSettled([loadSportlinkItems(), loadWillowItems()]);
+  return [
+    ...(sl.status === "fulfilled" ? sl.value : []),
+    ...(wl.status === "fulfilled" ? wl.value : []),
+  ];
 }
 
 async function telegramApi(method, payload) {
@@ -229,23 +312,36 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
   await sendText(chatId, text, { inline_keyboard: keyboardRows });
 }
 
-function buildChannelKeyboard(channels) {
+function buildItemsKeyboard(items) {
   const rows = [];
-  for (const ch of channels.slice(0, 45)) {
-    const text = `➔  ${toSmallCaps(ch.name)}`.slice(0, 60);
-    rows.push([{ text, callback_data: `ns:${ch.id}` }]);
+  for (const item of items.slice(0, 45)) {
+    const badge = item.source === "WILLOW" ? ` [ ${toSmallCaps(item.status || "INFO")} ]` : "";
+    const text = `➔  ${toSmallCaps(item.title)}${badge}`.slice(0, 60);
+    rows.push([{ text, callback_data: `ns:${item.id}` }]);
   }
   return { inline_keyboard: rows };
 }
 
-async function sendNsLinkMessage(chatId, item) {
-  const lines = [
-    `📺  <b>${esc(toSmallCaps(item.name))}</b>`,
-    item.expireIst ? `⏳  ${esc(toSmallCaps("EXPIRE"))}  ⇢  <code>${esc(item.expireIst)}</code>` : "",
-    `🔗  <b>${esc(toSmallCaps("NS PLAYER LINK"))}</b>\n\n<code>${esc(item.nsLink)}</code>`,
-  ].filter(Boolean);
+async function sendNsLinksMessage(chatId, item) {
+  if (!item.streams?.length) {
+    await sendText(
+      chatId,
+      `⏳  <b>${esc(toSmallCaps(item.title))}</b>\n\n📌  <code>${esc(item.meta)}</code>\n\n➥  ${esc(toSmallCaps("STREAM LINK NOT AVAILABLE YET"))}`
+    );
+    return;
+  }
 
-  await sendText(chatId, lines.join("\n\n"));
+  const streamBlocks = item.streams.map(
+    (s) => `⚡  <b>${esc(toSmallCaps(s.server))}</b>\n<code>${esc(s.link)}</code>`
+  );
+
+  const message = [
+    `📺  <b>${esc(toSmallCaps(item.title))}</b>`,
+    `📌  <code>${esc(item.meta)}</code>`,
+    ...streamBlocks,
+  ].join("\n\n");
+
+  await sendText(chatId, message);
 }
 
 async function sendText(chatId, text, replyMarkup = null) {
@@ -291,7 +387,7 @@ export default async function handler(req, res) {
         await answerCallback(cq.id, toSmallCaps("ALL CHANNELS VERIFIED"), false);
         await sendText(
           chatId,
-          `✅  <b>${esc(toSmallCaps("VERIFIED"))}</b>\n\n➥  ${esc(toSmallCaps("USE /channels OR /sony"))}`
+          `✅  <b>${esc(toSmallCaps("VERIFIED"))}</b>\n\n➥  ${esc(toSmallCaps("USE /sportlink OR /willow"))}`
         );
         return res.status(200).json({ ok: true });
       }
@@ -303,15 +399,15 @@ export default async function handler(req, res) {
           return res.status(200).json({ ok: true });
         }
 
-        const list = await loadSportlinkChannels();
-        const selected = list.find((c) => c.id === arg1);
+        const all = await loadAllItems("all");
+        const selected = all.find((c) => c.id === arg1);
         if (!selected) {
-          await answerCallback(cq.id, toSmallCaps("CHANNEL NOT FOUND"), true);
+          await answerCallback(cq.id, toSmallCaps("ITEM NOT FOUND"), true);
           return res.status(200).json({ ok: true });
         }
 
-        await answerCallback(cq.id, toSmallCaps(selected.name));
-        await sendNsLinkMessage(chatId, selected);
+        await answerCallback(cq.id, toSmallCaps(selected.title));
+        await sendNsLinksMessage(chatId, selected);
         return res.status(200).json({ ok: true });
       }
 
@@ -340,56 +436,74 @@ export default async function handler(req, res) {
     if (cmd === "/start" || cmd === "/help") {
       const help = [
         `📌  <b>${esc(toSmallCaps("NS PLAYER BOT COMMANDS"))}</b>`,
-        `➠  <code>/channels</code>  ⇢  ${esc(toSmallCaps("ALL SPORTLINK CHANNELS"))}`,
-        `➥  <code>/&lt;channel name&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH SONY, STAR, TEN, HINDI"))}`,
+        `➠  <code>/sportlink</code>  ⇢  ${esc(toSmallCaps("JIO SPORTLINK CHANNELS"))}`,
+        `➠  <code>/willow</code>  ⇢  ${esc(toSmallCaps("WILLOW CRICKET MATCHES"))}`,
+        `➥  <code>/&lt;keyword&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH CHANNEL OR MATCH"))}`,
       ].join("\n\n");
 
       await sendText(chatId, help);
       return res.status(200).json({ ok: true });
     }
 
-    const all = await loadSportlinkChannels();
-
-    if (cmd === "/channels" || cmd === "/sportlink" || cmd === "/all") {
-      if (!all.length) {
-        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO CHANNELS FOUND"))}</b>`);
+    if (cmd === "/sportlink" || cmd === "/channels") {
+      const list = await loadAllItems("sportlink");
+      if (!list.length) {
+        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO SPORTLINK CHANNELS"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
       const head = [
         `📺  <b>${esc(toSmallCaps("SPORTLINK CHANNELS"))}</b>`,
-        `📌  ${esc(toSmallCaps("TOTAL"))}  ⟶  <b>${all.length}</b>`,
+        `📌  ${esc(toSmallCaps("TOTAL"))}  ⟶  <b>${list.length}</b>`,
         `➥  ${esc(toSmallCaps("TAP A CHANNEL BELOW"))}  ⇢`,
       ].join("\n\n");
 
-      await sendText(chatId, head, buildChannelKeyboard(all));
+      await sendText(chatId, head, buildItemsKeyboard(list));
+      return res.status(200).json({ ok: true });
+    }
+
+    if (cmd === "/willow") {
+      const list = await loadAllItems("willow");
+      if (!list.length) {
+        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO WILLOW MATCHES"))}</b>`);
+        return res.status(200).json({ ok: true });
+      }
+
+      const head = [
+        `🏏  <b>${esc(toSmallCaps("WILLOW MATCHES"))}</b>`,
+        `📌  ${esc(toSmallCaps("TOTAL"))}  ⟶  <b>${list.length}</b>`,
+        `➥  ${esc(toSmallCaps("TAP A MATCH BELOW"))}  ⇢`,
+      ].join("\n\n");
+
+      await sendText(chatId, head, buildItemsKeyboard(list));
       return res.status(200).json({ ok: true });
     }
 
     const query = `${cmd.slice(1)} ${extra}`.trim().toLowerCase();
     const tokens = query.split(/\s+/).filter(Boolean);
+    const all = await loadAllItems("all");
     const matched = all.filter((item) => tokens.every((t) => item.searchText.includes(t)));
 
     if (!matched.length) {
       await sendText(
         chatId,
-        `🛑  <b>${esc(toSmallCaps(query.toUpperCase()))}</b>\n\n➥  ${esc(toSmallCaps("NO MATCHING CHANNEL"))}`
+        `🛑  <b>${esc(toSmallCaps(query.toUpperCase()))}</b>\n\n➥  ${esc(toSmallCaps("NO MATCHING RESULTS"))}`
       );
       return res.status(200).json({ ok: true });
     }
 
     if (matched.length === 1) {
-      await sendNsLinkMessage(chatId, matched[0]);
+      await sendNsLinksMessage(chatId, matched[0]);
       return res.status(200).json({ ok: true });
     }
 
     const head = [
       `📌  <b>${esc(toSmallCaps(`RESULTS : ${query.toUpperCase()}`))}</b>`,
       `➠  ${esc(toSmallCaps("FOUND"))}  ⇢  <b>${matched.length}</b>`,
-      `➥  ${esc(toSmallCaps("TAP A CHANNEL BELOW"))}  ⇢`,
+      `➥  ${esc(toSmallCaps("TAP AN ITEM BELOW"))}  ⇢`,
     ].join("\n\n");
 
-    await sendText(chatId, head, buildChannelKeyboard(matched));
+    await sendText(chatId, head, buildItemsKeyboard(matched));
     return res.status(200).json({ ok: true });
   } catch (err) {
     return res.status(200).json({ ok: true, error: err.message });
