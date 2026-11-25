@@ -7,20 +7,16 @@ const SONY_URL =
 const SKY_BASE_URL = "https://tbx090-sky-nz-epg.vercel.app";
 const FOX_BASE_URL = "https://tbx090-foxtel-epg.vercel.app";
 
-// Dono private channels ki config:
-// id: Bot se forward karke mili numeric ID (-100...)
-// url: Channel ka invite link
-// label: Prompt me dikhne wala naam
 const REQUIRED_CHANNELS = [
   {
-    id: String(process.env.FOOTBALL_CHANNEL_ID || "-1001111111111").trim(),
-    url: String(process.env.FOOTBALL_CHANNEL_URL || "https://t.me/+URLJF2-HXW44ZWU1").trim(),
-    label: "FOOTBALL CHANNEL",
+    id: String(process.env.CRICXCRATE_CHANNEL_ID || "-1003215553013").trim(),
+    url: String(process.env.CRICXCRATE_CHANNEL_URL || "https://t.me/+vjCGYgxHRmhhNGI1").trim(),
+    label: "CRICXCRATE",
   },
   {
-    id: String(process.env.CRICXCRATE_CHANNEL_ID || "-1002222222222").trim(),
-    url: String(process.env.CRICXCRATE_CHANNEL_URL || "https://t.me/+vjCGYgxHRmhhNGI1").trim(),
-    label: "CRICXCRATE MAIN",
+    id: String(process.env.FOOTBALL_CHANNEL_ID || "-1003973221958").trim(),
+    url: String(process.env.FOOTBALL_CHANNEL_URL || "https://t.me/+URLJF2-HXW44ZWU1").trim(),
+    label: "FOOT X CRATE",
   },
 ];
 
@@ -423,11 +419,16 @@ async function telegramApi(method, payload) {
   }
 }
 
-async function isMemberOfChannel(channelId, userId) {
-  if (!channelId || !userId) return false;
+async function isMemberOfChannel(channelId, userId, bypassCache = false) {
+  if (!channelId || !userId) return { joined: false, reason: "missing_id_or_user" };
+
   const cacheKey = `sub:${channelId}:${userId}`;
-  const cached = getCached(cacheKey);
-  if (typeof cached === "boolean") return cached;
+  if (!bypassCache) {
+    const cached = getCached(cacheKey);
+    if (typeof cached === "boolean") {
+      return { joined: cached, reason: cached ? "cached_member" : "cached_not_member" };
+    }
+  }
 
   try {
     const res = await telegramApi("getChatMember", {
@@ -438,18 +439,24 @@ async function isMemberOfChannel(channelId, userId) {
     const joined =
       ["creator", "administrator", "member", "restricted"].includes(status) &&
       (status !== "restricted" || res?.result?.is_member !== false);
-    return setCached(cacheKey, joined, MEMBER_CACHE_TTL_MS);
-  } catch {
-    return false;
+
+    setCached(cacheKey, joined, MEMBER_CACHE_TTL_MS);
+    return { joined, reason: status || "unknown" };
+  } catch (err) {
+    return { joined: false, reason: err?.message || "api_error" };
   }
 }
 
-async function checkRequiredChannels(userId) {
+async function checkRequiredChannels(userId, bypassCache = false) {
   const checks = await Promise.all(
-    REQUIRED_CHANNELS.map(async (ch) => ({
-      ...ch,
-      joined: await isMemberOfChannel(ch.id, userId),
-    }))
+    REQUIRED_CHANNELS.map(async (ch) => {
+      const result = await isMemberOfChannel(ch.id, userId, bypassCache);
+      return {
+        ...ch,
+        joined: result.joined,
+        reason: result.reason,
+      };
+    })
   );
 
   const joinedCount = checks.filter((c) => c.joined).length;
@@ -552,7 +559,7 @@ export default async function handler(req, res) {
       const [prefix, arg1, arg2] = data.split(":");
 
       if (chatId && prefix === "chk" && arg1 === "join") {
-        const sub = await checkRequiredChannels(userId);
+        const sub = await checkRequiredChannels(userId, true);
         if (!sub.allowed) {
           await sendJoinPrompt(chatId, sub.missing, cq.id);
           return res.status(200).json({ ok: true });
