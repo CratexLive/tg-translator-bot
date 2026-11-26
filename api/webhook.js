@@ -6,8 +6,8 @@ const MAX_POOL = 24;
 
 const DEFAULT_HEADERS = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": "en-US,en;q=0.9",
   Referer: `${CRICINFO_BASE}/`,
 };
@@ -59,7 +59,10 @@ function stripTags(html) {
 }
 
 function toWideCricinfoUrl(rawUrl) {
-  const clean = String(rawUrl || "").trim().replace(/\\u002F/gi, "/");
+  const clean = String(rawUrl || "")
+    .trim()
+    .replace(/\\u002F/gi, "/")
+    .replace(/&amp;/gi, "&");
   if (!clean) return "";
   const full = clean.startsWith("//") ? `https:${clean}` : clean;
   if (!/^https:\/\/img1\.hscicdn\.com\/image\/upload\//i.test(full)) {
@@ -67,7 +70,7 @@ function toWideCricinfoUrl(rawUrl) {
   }
   if (/\/lsci\/db\/PICTURES\/CMS\//i.test(full)) {
     return full.replace(
-      /\/image\/upload\/[^/]+\/(lsci\/db\/PICTURES\/CMS\/.+)$/i,
+      /\/image\/upload\/[^/]+\/(lsci\/db\/PICTURES\/CMS\/[^"'<>\\\s?]+)/i,
       "/image/upload/f_auto,t_ds_wide_w_960,q_80/$1"
     );
   }
@@ -76,44 +79,48 @@ function toWideCricinfoUrl(rawUrl) {
 
 async function fetchHtml(url) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(url, {
       cache: "no-store",
+      redirect: "follow",
       signal: controller.signal,
       headers: DEFAULT_HEADERS,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) return "";
     return await res.text();
+  } catch {
+    return "";
   } finally {
     clearTimeout(timer);
   }
 }
 
-function buildCandidatePhotoPages(query) {
+function buildCandidatePages(query) {
   const raw = String(query || "").trim();
   if (!raw) return [];
 
-  const urls = new Set();
+  const urls = [];
 
   if (/^https?:\/\//i.test(raw)) {
     const u = raw.replace(/\/+$/, "");
     if (/\/cricketers\/[^/]+-\d+/i.test(u) && !/\/photos$/i.test(u)) {
-      urls.add(`${u}/photos`);
+      urls.push(`${u}/photos`);
     }
-    urls.add(u);
-    return Array.from(urls);
+    urls.push(u);
+    return urls;
   }
 
-  const directMatch = raw.match(/^(.+?)[-\s]+(\d{3,8})$/);
-  if (directMatch) {
-    const slug = directMatch[1]
+  const playerMatch = raw.match(/^(.+?)[-\s]+(\d{3,8})$/);
+  if (playerMatch) {
+    const slug = playerMatch[1]
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
-    const id = directMatch[2];
+    const id = playerMatch[2];
     if (slug && id) {
-      urls.add(`${CRICINFO_BASE}/cricketers/${slug}-${id}/photos`);
+      urls.push(`${CRICINFO_BASE}/cricketers/${slug}-${id}/photos`);
+      urls.push(`${CRICINFO_BASE}/cricketers/${slug}-${id}`);
     }
   }
 
@@ -122,72 +129,35 @@ function buildCandidatePhotoPages(query) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
   if (slugOnly) {
-    urls.add(`${CRICINFO_BASE}/cricketers/${slugOnly}/photos`);
+    urls.push(`${CRICINFO_BASE}/cricketers/${slugOnly}/photos`);
+    urls.push(`${CRICINFO_BASE}/cricketers/${slugOnly}`);
   }
 
-  urls.add(`${CRICINFO_BASE}/photo`);
-  urls.add(`${CRICINFO_BASE}/gallery`);
+  urls.push(`${CRICINFO_BASE}/photo`);
+  urls.push(`${CRICINFO_BASE}/gallery`);
 
-  return Array.from(urls);
+  return [...new Set(urls)];
 }
 
-async function resolvePlayerPhotosPage(query) {
-  const raw = String(query || "").trim();
-  const candidates = buildCandidatePhotoPages(raw);
-
-  if (!/^https?:\/\//i.test(raw) && !/[-_\s]\d{3,8}$/.test(raw)) {
-    const qLower = raw.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
-    const tokens = qLower.split(/\s+/).filter((t) => t.length >= 2);
-    for (const basePage of [`${CRICINFO_BASE}/photo`, `${CRICINFO_BASE}/gallery`]) {
-      try {
-        const html = await fetchHtml(basePage);
-        const linkRegex = /href=["']([^"']*\/cricketers\/[^"']*-\d+\/photos)["']/gi;
-        let m;
-        while ((m = linkRegex.exec(html)) !== null) {
-          const href = m[1];
-          const normHref = href.toLowerCase().replace(/[^a-z0-9]/g, " ");
-          if (tokens.every((tok) => normHref.includes(tok))) {
-            const full = href.startsWith("http") ? href : `${CRICINFO_BASE}${href}`;
-            return full;
-          }
-        }
-      } catch {
-        // Continue to direct candidates
-      }
-    }
-  }
-
-  for (const url of candidates) {
-    try {
-      const html = await fetchHtml(url);
-      if (/img1\.hscicdn\.com\/image\/upload\//i.test(html)) {
-        return url;
-      }
-    } catch {
-      // Try next candidate URL
-    }
-  }
-
-  return candidates[0] || "";
-}
-
-function extractWidePhotosFromHtml(html, fallbackTitle) {
+function extractWidePhotosFromHtml(html, title) {
+  if (!html) return [];
   const photos = [];
   const seen = new Set();
 
-  const rawMatches =
-    html.match(/https?:(?:\\u002F|\/)+img1\.hscicdn\.com(?:\\u002F|\/)+image(?:\\u002F|\/)+upload(?:\\u002F|\/)+[^\s"'<>\\)]+/gi) ||
-    [];
+  const matches =
+    html.match(
+      /https?:(?:\\u002F|\/)+img1\.hscicdn\.com(?:\\u002F|\/)+image(?:\\u002F|\/)+upload(?:\\u002F|\/)+[^\s"'<>\\)]+/gi
+    ) || [];
 
-  for (const rawUrl of rawMatches) {
+  for (const rawUrl of matches) {
     const wideUrl = toWideCricinfoUrl(rawUrl);
     if (!wideUrl) continue;
-    const dedupKey = wideUrl.replace(/\/image\/upload\/[^/]+\//i, "/image/upload/");
-    if (seen.has(dedupKey)) continue;
-    seen.add(dedupKey);
+    const key = wideUrl.replace(/\/image\/upload\/[^/]+\//i, "/image/upload/");
+    if (seen.has(key)) continue;
+    seen.add(key);
 
     photos.push({
-      title: fallbackTitle,
+      title,
       photoUrl: wideUrl,
     });
 
@@ -198,16 +168,32 @@ function extractWidePhotosFromHtml(html, fallbackTitle) {
 }
 
 async function fetchCricketerWidePhotos(query) {
-  const pageUrl = await resolvePlayerPhotosPage(query);
-  if (!pageUrl) return [];
+  const raw = String(query || "").trim();
 
-  const slugMatch = pageUrl.match(/\/cricketers\/([a-z0-9-]+)-\d+\/photos/i);
-  const titleFromSlug = slugMatch?.[1]
-    ? slugMatch[1].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-    : stripTags(query) || "Cricketer Photos";
+  if (/img1\.hscicdn\.com\/image\/upload\//i.test(raw)) {
+    const wide = toWideCricinfoUrl(raw);
+    return wide ? [{ title: "Wide Photo", photoUrl: wide }] : [];
+  }
 
-  const html = await fetchHtml(pageUrl);
-  return extractWidePhotosFromHtml(html, titleFromSlug);
+  const cmsMatch = raw.match(/^(\d{5,7})\.(\d+)$/);
+  if (cmsMatch) {
+    const folder = `${Math.floor(Number(cmsMatch[1]) / 100) * 100}`;
+    const url = `https://img1.hscicdn.com/image/upload/f_auto,t_ds_wide_w_960,q_80/lsci/db/PICTURES/CMS/${folder}/${cmsMatch[1]}.${cmsMatch[2]}.jpg`;
+    return [{ title: `CMS ${cmsMatch[1]}.${cmsMatch[2]}`, photoUrl: url }];
+  }
+
+  const pages = buildCandidatePages(raw);
+  const titleBase =
+    stripTags(raw.replace(/[-_\s]+\d{3,8}$/, "")).replace(/\b\w/g, (c) => c.toUpperCase()) ||
+    "Cricketer Photos";
+
+  for (const pageUrl of pages) {
+    const html = await fetchHtml(pageUrl);
+    const photos = extractWidePhotosFromHtml(html, titleBase);
+    if (photos.length) return photos;
+  }
+
+  return [];
 }
 
 function formatPhotoCaption(item, positionNumber, totalCount) {
@@ -262,7 +248,8 @@ async function sendPhotoCard(chatId, item, positionNumber, totalCount, replyMark
       chatId,
       [
         `📸  <b>${esc(toSmallCaps(item.title))}</b>`,
-        `⚠️  ${esc(toSmallCaps("PHOTO PREVIEW UNAVAILABLE"))}`,
+        `⚠️  ${esc(toSmallCaps("PHOTO SEND FAILED"))}`,
+        `<code>${esc(data?.description || `HTTP ${res.status}`)}</code>`,
       ].join("\n\n"),
       replyMarkup
     );
@@ -386,8 +373,8 @@ export default async function handler(req, res) {
           `📸  <b>${esc(toSmallCaps("WIDE PHOTO STUDIO"))}</b>`,
           `╚══════════════════════════╝`,
           `➠  <code>/rohit sharma 34102</code>  ⇢  ${esc(toSmallCaps("EX: PLAYER PHOTOS"))}\n` +
-            `➠  <code>/rohit sharma</code>        ⇢  ${esc(toSmallCaps("EX: NAME SEARCH"))}\n` +
-            `➥  <code>/photo &lt;query&gt;</code>        ⇢  ${esc(toSmallCaps("EX: /photo virat kohli"))}`,
+            `➠  <code>/425254.6</code>           ⇢  ${esc(toSmallCaps("EX: CMS PHOTO ID"))}\n` +
+            `➥  <code>/photo &lt;url/query&gt;</code>    ⇢  ${esc(toSmallCaps("EX: /photo virat kohli"))}`,
         ].join("\n")
       );
       return res.status(200).json({ ok: true });
@@ -404,7 +391,7 @@ export default async function handler(req, res) {
         [
           `📸  <b>${esc(toSmallCaps("ENTER PLAYER NAME OR ID"))}</b>`,
           `➠  ${esc(toSmallCaps("EXAMPLE"))} 1  ⇢  <code>/rohit sharma 34102</code>`,
-          `➥  ${esc(toSmallCaps("EXAMPLE"))} 2  ⇢  <code>/rohit sharma</code>`,
+          `➥  ${esc(toSmallCaps("EXAMPLE"))} 2  ⇢  <code>/425254.6</code>`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
@@ -416,8 +403,8 @@ export default async function handler(req, res) {
         chatId,
         [
           `🛑  <b>${esc(toSmallCaps(query))}</b>`,
-          `➥  ${esc(toSmallCaps("NO WIDE PHOTOS FOUND"))}`,
-          `➠  ${esc(toSmallCaps("TRY EX"))}  ⇢  <code>/rohit sharma 34102</code>`,
+          `➥  ${esc(toSmallCaps("NO PHOTOS FOUND OR SITE BLOCKED FETCH"))}`,
+          `➠  ${esc(toSmallCaps("TRY EX"))}  ⇢  <code>/425254.6</code>`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
