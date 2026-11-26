@@ -1,23 +1,16 @@
 import crypto from "node:crypto";
 
-const FEED_PRIMARY_URL = "https://sportlink-tv11.pages.dev/Data.json";
-const FEED_EVENTS_URL =
-  "https://raw.githubusercontent.com/srhady/willow-event/refs/heads/main/live_sports.json";
+const CRICINFO_BASE = "https://www.espncricinfo.com";
+const BATCH_SIZE = 6;
+const MAX_POOL = 24;
 
-const REQUIRED_CHANNELS = [
-  {
-    id: String(process.env.CRICXCRATE_CHANNEL_ID || "-1003215553013").trim(),
-    url: String(process.env.CRICXCRATE_CHANNEL_URL || "https://t.me/+vjCGYgxHRmhhNGI1").trim(),
-    label: "CRICXCRATE",
-  },
-  {
-    id: String(process.env.FOOTBALL_CHANNEL_ID || "-1003973221958").trim(),
-    url: String(process.env.FOOTBALL_CHANNEL_URL || "https://t.me/+URLJF2-HXW44ZWU1").trim(),
-    label: "FOOT X CRATE",
-  },
-];
-
-const REQUIRE_ALL_CHANNELS = true;
+const DEFAULT_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  Referer: `${CRICINFO_BASE}/`,
+};
 
 const SMALL_CAPS_MAP = {
   a: "ᴀ", b: "ʙ", c: "ᴄ", d: "ᴅ", e: "ᴇ", f: "ꜰ", g: "ɢ", h: "ʜ",
@@ -29,25 +22,6 @@ const SMALL_CAPS_MAP = {
   Q: "Q", R: "ʀ", S: "ꜱ", T: "ᴛ", U: "ᴜ", V: "ᴠ", W: "ᴡ", X: "x",
   Y: "ʏ", Z: "ᴢ",
 };
-
-const CACHE_TTL_MS = 30000;
-const MEMBER_CACHE_TTL_MS = 15000;
-const cache = new Map();
-
-function getCached(key) {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.value;
-}
-
-function setCached(key, value, ttlMs = CACHE_TTL_MS) {
-  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
-  return value;
-}
 
 function toSmallCaps(text) {
   return String(text ?? "")
@@ -64,374 +38,241 @@ function esc(val) {
     .replace(/"/g, "&quot;");
 }
 
-function makeId(raw) {
-  return crypto.createHash("sha1").update(String(raw || "").toLowerCase()).digest("hex").slice(0, 14);
+function makeBatchId(query) {
+  return crypto
+    .createHash("sha1")
+    .update(`${String(query).toLowerCase()}|${Date.now()}|${Math.random()}`)
+    .digest("hex")
+    .slice(0, 12);
 }
 
-function getStatusEmoji(status) {
-  if (status === "LIVE") return "🔺";
-  if (status === "UPCOMING") return "⏳";
-  return "🔻";
+function stripTags(html) {
+  return String(html || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function convertBdtToIst(bdtStr) {
-  const raw = String(bdtStr || "").trim();
-  if (!raw) return "TBA";
-
-  const timeMatch = raw.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*BDT/i);
-  if (!timeMatch) return raw.replace(/\bBDT\b/gi, "IST");
-
-  let hour = parseInt(timeMatch[1], 10);
-  const minute = parseInt(timeMatch[2] || "0", 10);
-  const mer = timeMatch[3].toUpperCase();
-
-  if (mer === "PM" && hour !== 12) hour += 12;
-  if (mer === "AM" && hour === 12) hour = 0;
-
-  let totalMins = hour * 60 + minute - 30;
-  let dayShift = 0;
-  if (totalMins < 0) {
-    totalMins += 1440;
-    dayShift = -1;
+function toWideCricinfoUrl(rawUrl) {
+  const clean = String(rawUrl || "").trim().replace(/\\u002F/gi, "/");
+  if (!clean) return "";
+  const full = clean.startsWith("//") ? `https:${clean}` : clean;
+  if (!/^https:\/\/img1\.hscicdn\.com\/image\/upload\//i.test(full)) {
+    return "";
   }
-
-  const istH24 = Math.floor(totalMins / 60);
-  const istMin = totalMins % 60;
-  const istMer = istH24 >= 12 ? "PM" : "AM";
-  const istH12 = istH24 % 12 === 0 ? 12 : istH24 % 12;
-  const istTimePart = `${istH12}:${String(istMin).padStart(2, "0")} ${istMer} IST`;
-
-  const prefix = raw.slice(0, timeMatch.index).trim();
-  if (!prefix) {
-    return dayShift === -1 ? `Prev Day • ${istTimePart}` : istTimePart;
+  if (/\/lsci\/db\/PICTURES\/CMS\//i.test(full)) {
+    return full.replace(
+      /\/image\/upload\/[^/]+\/(lsci\/db\/PICTURES\/CMS\/.+)$/i,
+      "/image/upload/f_auto,t_ds_wide_w_960,q_80/$1"
+    );
   }
-
-  if (/^live\s*at$/i.test(prefix)) {
-    return dayShift === -1 ? `Live at ${istTimePart} (Prev Day)` : `Live at ${istTimePart}`;
-  }
-
-  if (/^tomorrow$/i.test(prefix)) {
-    return dayShift === -1 ? `Today • ${istTimePart}` : `Tomorrow • ${istTimePart}`;
-  }
-
-  const dateMatch = prefix.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s*([A-Za-z]+)\s+(\d{1,2})$/i);
-  if (dateMatch && dayShift === -1) {
-    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const dIdx = days.findIndex((d) => d.toLowerCase() === dateMatch[1].toLowerCase());
-    const mIdx = months.findIndex((m) => m.toLowerCase() === dateMatch[2].slice(0, 3).toLowerCase());
-    const dayNum = parseInt(dateMatch[3], 10);
-
-    if (dIdx !== -1 && mIdx !== -1 && dayNum > 1) {
-      const prevDayName = days[(dIdx + 6) % 7];
-      return `${prevDayName}, ${months[mIdx]} ${dayNum - 1} • ${istTimePart}`;
-    }
-  }
-
-  return `${prefix} • ${istTimePart}`;
+  return full;
 }
 
-function buildDirectPlayerLine({ streamUrl, cookie = "", keys = [] }) {
-  const cleanUrl = String(streamUrl || "").trim();
-  if (!cleanUrl) return "";
-
-  const rawCookie = String(cookie || "").trim().replace(/^Cookie=/i, "");
-  const sep = cleanUrl.includes("?") ? "&" : "?";
-  const urlWithQuery = rawCookie ? `${cleanUrl}${sep}${rawCookie}` : cleanUrl;
-
-  const cleanKeys = (Array.isArray(keys) ? keys : [])
-    .map((k) => String(k || "").trim())
-    .filter(Boolean);
-
-  const parts = [];
-  if (rawCookie) parts.push(`Cookie=${rawCookie}`);
-  parts.push("User-Agent=Virat");
-  parts.push("Referer=https://www.jiotv.com/");
-  parts.push("Origin=https://www.jiotv.com/");
-  if (cleanKeys.length) {
-    parts.push("drmScheme=clearkey");
-    parts.push(`drmLicense=${cleanKeys.join(",")}`);
-  }
-
-  return `${urlWithQuery}|${parts.join("&")}`;
-}
-
-function buildEventPlayerLine(streamUrl, drmKey = "") {
-  const cleanUrl = String(streamUrl || "").trim();
-  if (!cleanUrl) return "";
-
-  const cleanKey = String(drmKey || "").trim();
-  if (!cleanKey) return cleanUrl;
-
-  return `${cleanUrl}|drmScheme=clearkey&drmLicense=${cleanKey}`;
-}
-
-function extractEventStreams(match) {
-  const drmKey = String(match?.drm_key || "").trim();
-  const streams = [];
-
-  const groups = [
-    { obj: match?.stream_url_alpha, tag: "SERVER A" },
-    { obj: match?.stream_url_bravo, tag: "SERVER B" },
-  ];
-
-  for (const { obj, tag } of groups) {
-    if (!obj || typeof obj !== "object") continue;
-    for (const [serverName, url] of Object.entries(obj)) {
-      const line = buildEventPlayerLine(url, drmKey);
-      if (!line) continue;
-      streams.push({
-        label: `${tag} • ${String(serverName).trim()}`,
-        line,
-      });
-    }
-  }
-
-  return streams;
-}
-
-async function fetchJson(url, timeoutMs = 6000) {
-  const sep = url.includes("?") ? "&" : "?";
+async function fetchHtml(url) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), 12000);
   try {
-    const res = await fetch(`${url}${sep}t=${Date.now()}`, {
+    const res = await fetch(url, {
       cache: "no-store",
       signal: controller.signal,
+      headers: DEFAULT_HEADERS,
     });
-    if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
-    return await res.json();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function loadPrimaryFeed() {
-  const cached = getCached("feed:primary");
-  if (cached) return cached;
+function buildCandidatePhotoPages(query) {
+  const raw = String(query || "").trim();
+  if (!raw) return [];
 
-  const data = await fetchJson(FEED_PRIMARY_URL);
-  const rawList = Array.isArray(data?.channels) ? data.channels : [];
-  const items = [];
+  const urls = new Set();
 
-  for (const entry of rawList) {
-    const title = String(entry?.name || "").trim();
-    const keys = Array.isArray(entry?.sportlink) && entry.sportlink.length
-      ? entry.sportlink
-      : entry?.key_id && entry?.key
-        ? [`${entry.key_id}:${entry.key}`]
-        : [];
-    const line = buildDirectPlayerLine({
-      streamUrl: entry?.stream_url,
-      cookie: entry?.cookie,
-      keys,
-    });
-    if (!title || !line) continue;
-
-    const lower = title.toLowerCase();
-    const network = lower.includes("star")
-      ? "star"
-      : lower.includes("sony")
-        ? "sony"
-        : "other";
-
-    const id = makeId(`p|${entry?.id || ""}|${title}`);
-    items.push({
-      id,
-      network,
-      title,
-      status: "LIVE",
-      timingLabel: "VALID TILL",
-      timingValue: entry?.cookie_expire_ist || "ACTIVE",
-      streams: [{ label: "DIRECT STREAM", line }],
-      searchText: `${entry?.id || ""} ${title}`.toLowerCase(),
-    });
-  }
-
-  return setCached("feed:primary", items);
-}
-
-async function loadEventsFeed() {
-  const cached = getCached("feed:events");
-  if (cached) return cached;
-
-  const data = await fetchJson(FEED_EVENTS_URL);
-  const matches = Array.isArray(data?.Matches) ? data.Matches : [];
-  const items = [];
-
-  for (const m of matches) {
-    const title = String(m?.title || "").trim();
-    if (!title) continue;
-
-    const streams = extractEventStreams(m);
-    const status = String(m?.status || "UPCOMING").trim().toUpperCase();
-    const istTime = convertBdtToIst(m?.time);
-    const id = makeId(`e|${m?.match_id || ""}|${title}`);
-
-    items.push({
-      id,
-      network: "willow",
-      title,
-      status,
-      timingLabel: "SCHEDULE (IST)",
-      timingValue: istTime,
-      streams,
-      searchText: `${m?.match_id || ""} ${title} ${m?.synopsis || ""} ${status} ${istTime}`.toLowerCase(),
-    });
-  }
-
-  return setCached("feed:events", items);
-}
-
-async function loadAllEntries(mode = "all") {
-  if (mode === "willow") return loadEventsFeed();
-  if (mode === "star") {
-    const list = await loadPrimaryFeed();
-    return list.filter((i) => i.network === "star");
-  }
-  if (mode === "sony") {
-    const list = await loadPrimaryFeed();
-    return list.filter((i) => i.network === "sony");
-  }
-
-  const [p, e] = await Promise.allSettled([loadPrimaryFeed(), loadEventsFeed()]);
-  return [
-    ...(p.status === "fulfilled" ? p.value : []),
-    ...(e.status === "fulfilled" ? e.value : []),
-  ];
-}
-
-async function telegramApi(method, payload) {
-  const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
-  if (!token) throw new Error("Missing TELEGRAM_TOKEN");
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.ok) {
-      throw new Error(data?.description || `Telegram ${method} ${res.status}`);
+  if (/^https?:\/\//i.test(raw)) {
+    const u = raw.replace(/\/+$/, "");
+    if (/\/cricketers\/[^/]+-\d+/i.test(u) && !/\/photos$/i.test(u)) {
+      urls.add(`${u}/photos`);
     }
-    return data;
-  } finally {
-    clearTimeout(timer);
+    urls.add(u);
+    return Array.from(urls);
   }
+
+  const directMatch = raw.match(/^(.+?)[-\s]+(\d{3,8})$/);
+  if (directMatch) {
+    const slug = directMatch[1]
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    const id = directMatch[2];
+    if (slug && id) {
+      urls.add(`${CRICINFO_BASE}/cricketers/${slug}-${id}/photos`);
+    }
+  }
+
+  const slugOnly = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (slugOnly) {
+    urls.add(`${CRICINFO_BASE}/cricketers/${slugOnly}/photos`);
+  }
+
+  urls.add(`${CRICINFO_BASE}/photo`);
+  urls.add(`${CRICINFO_BASE}/gallery`);
+
+  return Array.from(urls);
 }
 
-async function isMemberOfChannel(channelId, userId, bypassCache = false) {
-  if (!channelId || !userId) return false;
+async function resolvePlayerPhotosPage(query) {
+  const raw = String(query || "").trim();
+  const candidates = buildCandidatePhotoPages(raw);
 
-  const cacheKey = `sub:${channelId}:${userId}`;
-  if (!bypassCache) {
-    const cached = getCached(cacheKey);
-    if (typeof cached === "boolean") return cached;
+  if (!/^https?:\/\//i.test(raw) && !/[-_\s]\d{3,8}$/.test(raw)) {
+    const qLower = raw.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+    const tokens = qLower.split(/\s+/).filter((t) => t.length >= 2);
+    for (const basePage of [`${CRICINFO_BASE}/photo`, `${CRICINFO_BASE}/gallery`]) {
+      try {
+        const html = await fetchHtml(basePage);
+        const linkRegex = /href=["']([^"']*\/cricketers\/[^"']*-\d+\/photos)["']/gi;
+        let m;
+        while ((m = linkRegex.exec(html)) !== null) {
+          const href = m[1];
+          const normHref = href.toLowerCase().replace(/[^a-z0-9]/g, " ");
+          if (tokens.every((tok) => normHref.includes(tok))) {
+            const full = href.startsWith("http") ? href : `${CRICINFO_BASE}${href}`;
+            return full;
+          }
+        }
+      } catch {
+        // Continue to direct candidates
+      }
+    }
   }
 
-  try {
-    const res = await telegramApi("getChatMember", {
-      chat_id: channelId,
-      user_id: userId,
+  for (const url of candidates) {
+    try {
+      const html = await fetchHtml(url);
+      if (/img1\.hscicdn\.com\/image\/upload\//i.test(html)) {
+        return url;
+      }
+    } catch {
+      // Try next candidate URL
+    }
+  }
+
+  return candidates[0] || "";
+}
+
+function extractWidePhotosFromHtml(html, fallbackTitle) {
+  const photos = [];
+  const seen = new Set();
+
+  const rawMatches =
+    html.match(/https?:(?:\\u002F|\/)+img1\.hscicdn\.com(?:\\u002F|\/)+image(?:\\u002F|\/)+upload(?:\\u002F|\/)+[^\s"'<>\\)]+/gi) ||
+    [];
+
+  for (const rawUrl of rawMatches) {
+    const wideUrl = toWideCricinfoUrl(rawUrl);
+    if (!wideUrl) continue;
+    const dedupKey = wideUrl.replace(/\/image\/upload\/[^/]+\//i, "/image/upload/");
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    photos.push({
+      title: fallbackTitle,
+      photoUrl: wideUrl,
     });
-    const status = String(res?.result?.status || "");
-    const joined =
-      ["creator", "administrator", "member", "restricted"].includes(status) &&
-      (status !== "restricted" || res?.result?.is_member !== false);
-    return setCached(cacheKey, joined, MEMBER_CACHE_TTL_MS);
-  } catch {
-    return false;
+
+    if (photos.length >= MAX_POOL) break;
   }
+
+  return photos;
 }
 
-async function checkRequiredChannels(userId, bypassCache = false) {
-  const checks = await Promise.all(
-    REQUIRED_CHANNELS.map(async (ch) => ({
-      ...ch,
-      joined: await isMemberOfChannel(ch.id, userId, bypassCache),
-    }))
-  );
+async function fetchCricketerWidePhotos(query) {
+  const pageUrl = await resolvePlayerPhotosPage(query);
+  if (!pageUrl) return [];
 
-  const joinedCount = checks.filter((c) => c.joined).length;
-  const allowed = REQUIRE_ALL_CHANNELS
-    ? joinedCount === checks.length
-    : joinedCount > 0;
+  const slugMatch = pageUrl.match(/\/cricketers\/([a-z0-9-]+)-\d+\/photos/i);
+  const titleFromSlug = slugMatch?.[1]
+    ? slugMatch[1].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : stripTags(query) || "Cricketer Photos";
 
+  const html = await fetchHtml(pageUrl);
+  return extractWidePhotosFromHtml(html, titleFromSlug);
+}
+
+function formatPhotoCaption(item, positionNumber, totalCount) {
+  return [
+    `╔══════════════════════════╗`,
+    `📸  <b>${esc(toSmallCaps(item.title))}</b>`,
+    `╚══════════════════════════╝`,
+    `📌  ${esc(toSmallCaps("PHOTO"))}     ⟶  <code>#${positionNumber} / ${totalCount}</code>`,
+    `📐  ${esc(toSmallCaps("FRAME"))}     ⟶  <code>WIDE 16:9</code>`,
+  ]
+    .join("\n")
+    .slice(0, 1020);
+}
+
+function buildMoreKeyboard(batchId, nextOffset, totalCount) {
+  if (!batchId || nextOffset >= totalCount) return null;
+  const remaining = Math.max(0, totalCount - nextOffset);
+  const nextCount = Math.min(BATCH_SIZE, remaining);
   return {
-    allowed,
-    missing: checks.filter((c) => !c.joined),
+    inline_keyboard: [
+      [
+        {
+          text: `➔  ${toSmallCaps(`MORE ( +${nextCount} )`)}`,
+          callback_data: `more:${batchId}:${nextOffset}`,
+        },
+      ],
+    ],
   };
 }
 
-async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
-  const targetList = missingChannels.length ? missingChannels : REQUIRED_CHANNELS;
-  const listLines = targetList.map(
-    (ch) => `📌  <b>${esc(toSmallCaps(ch.label))}</b>  ⇢  <code>${esc(ch.url)}</code>`
-  );
+async function sendPhotoCard(chatId, item, positionNumber, totalCount, replyMarkup = null) {
+  const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
+  if (!token) throw new Error("Missing TELEGRAM_TOKEN");
 
-  const text = [
-    `⚠️  <b>${esc(toSmallCaps("ACCESS LOCKED"))}</b>`,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    ...listLines,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    `💡  ${esc(toSmallCaps("JOIN ABOVE & TAP VERIFY"))}`,
-  ].join("\n\n");
+  const payload = {
+    chat_id: chatId,
+    photo: item.photoUrl,
+    caption: formatPhotoCaption(item, positionNumber, totalCount),
+    parse_mode: "HTML",
+  };
+  if (replyMarkup) payload.reply_markup = replyMarkup;
 
-  const keyboardRows = targetList.map((ch) => [
-    { text: `🧩  ${toSmallCaps(`JOIN ${ch.label}`)}`, url: ch.url },
-  ]);
-  keyboardRows.push([
-    { text: `🥂  ${toSmallCaps("VERIFY JOINED")}`, callback_data: "chk:join" },
-  ]);
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 
-  if (callbackQueryId) {
-    await answerCallback(callbackQueryId, toSmallCaps("JOIN REQUIRED FIRST"), true);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    await sendText(
+      chatId,
+      [
+        `📸  <b>${esc(toSmallCaps(item.title))}</b>`,
+        `⚠️  ${esc(toSmallCaps("PHOTO PREVIEW UNAVAILABLE"))}`,
+      ].join("\n\n"),
+      replyMarkup
+    );
   }
-  await sendText(chatId, text, { inline_keyboard: keyboardRows });
-}
-
-function buildSelectionKeyboard(items) {
-  const rows = [];
-  for (const item of items.slice(0, 45)) {
-    const mark = getStatusEmoji(item.status);
-    const text = `${mark}  ${toSmallCaps(item.title)}`.slice(0, 60);
-    rows.push([{ text, callback_data: `pick:${item.id}` }]);
-  }
-  return { inline_keyboard: rows };
-}
-
-async function sendStreamCard(chatId, item) {
-  const mark = getStatusEmoji(item.status);
-  const lines = [
-    `${mark}  <b>${esc(toSmallCaps(item.title))}</b>`,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    `📌  <b>${esc(toSmallCaps("STATE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.status))}</b>`,
-    `⏳  <b>${esc(toSmallCaps(item.timingLabel))}</b>  ⇢  <code>${esc(item.timingValue)}</code>`,
-  ];
-
-  if (!item.streams?.length) {
-    lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`🫥  <b>${esc(toSmallCaps("NO ACTIVE STREAM RIGHT NOW"))}</b>`);
-    lines.push(`💡  ${esc(toSmallCaps("TRY AGAIN CLOSER TO START TIME"))}`);
-    await sendText(chatId, lines.join("\n\n"));
-    return;
-  }
-
-  lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-  lines.push(`💡  <b>${esc(toSmallCaps("TAP TO COPY FOR PLAYER"))}</b>`);
-
-  for (const s of item.streams) {
-    lines.push(`🥂  <b>${esc(toSmallCaps(s.label))}</b>\n<code>${esc(s.line)}</code>`);
-  }
-
-  await sendText(chatId, lines.join("\n\n"));
 }
 
 async function sendText(chatId, text, replyMarkup = null) {
+  const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
+  if (!token) throw new Error("Missing TELEGRAM_TOKEN");
+
   const payload = {
     chat_id: chatId,
     text: String(text).slice(0, 4090),
@@ -439,20 +280,64 @@ async function sendText(chatId, text, replyMarkup = null) {
     disable_web_page_preview: true,
   };
   if (replyMarkup) payload.reply_markup = replyMarkup;
-  await telegramApi("sendMessage", payload);
-}
 
-async function answerCallback(id, text = "", alert = false) {
-  if (!id) return;
-  await telegramApi("answerCallbackQuery", {
-    callback_query_id: id,
-    text: String(text).slice(0, 195),
-    show_alert: alert,
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   }).catch(() => {});
 }
 
+async function answerCallback(id, text = "", alert = false) {
+  const token = String(process.env.TELEGRAM_TOKEN || process.env.BOT_TOKEN || "").trim();
+  if (!token || !id) return;
+
+  await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      callback_query_id: id,
+      text: String(text).slice(0, 195),
+      show_alert: alert,
+    }),
+  }).catch(() => {});
+}
+
+const batchStore = new Map();
+
+function saveBatch(batchId, items, query) {
+  batchStore.set(batchId, {
+    items,
+    query,
+    exp: Date.now() + 30 * 60 * 1000,
+  });
+}
+
+function getBatch(batchId) {
+  const entry = batchStore.get(batchId);
+  if (!entry) return null;
+  if (Date.now() > entry.exp) {
+    batchStore.delete(batchId);
+    return null;
+  }
+  return entry;
+}
+
+async function dispatchSlice(chatId, batchId, items, startIndex) {
+  const total = items.length;
+  const endIndex = Math.min(total, startIndex + BATCH_SIZE);
+  const hasMore = endIndex < total;
+
+  for (let i = startIndex; i < endIndex; i++) {
+    const isLastInBatch = i === endIndex - 1;
+    const markup =
+      isLastInBatch && hasMore ? buildMoreKeyboard(batchId, endIndex, total) : null;
+    await sendPhotoCard(chatId, items[i], i + 1, total, markup);
+  }
+}
+
 export default async function handler(req, res) {
-  if (req.method === "GET") return res.status(200).send("Bot Active");
+  if (req.method === "GET") return res.status(200).send("Cricketer Wide Photo Bot Active");
   if (req.method !== "POST") return res.status(405).end();
 
   try {
@@ -461,47 +346,20 @@ export default async function handler(req, res) {
     if (update.callback_query) {
       const cq = update.callback_query;
       const chatId = cq?.message?.chat?.id;
-      const userId = cq?.from?.id;
       const data = String(cq?.data || "");
-      const [prefix, arg1] = data.split(":");
+      const [prefix, batchId, offsetStr] = data.split(":");
 
-      if (chatId && prefix === "chk" && arg1 === "join") {
-        const sub = await checkRequiredChannels(userId, true);
-        if (!sub.allowed) {
-          await sendJoinPrompt(chatId, sub.missing, cq.id);
-          return res.status(200).json({ ok: true });
-        }
-        await answerCallback(cq.id, toSmallCaps("VERIFIED"), false);
-        await sendText(
-          chatId,
-          [
-            `🥂  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
-            `━━━━━━━━━━━━━━━━━━━━`,
-            `🧩  <code>/Willow</code>`,
-            `🧩  <code>/Star</code>`,
-            `🧩  <code>/Sony</code>`,
-            `💡  <code>/Match name</code>  |  <code>/Tournament</code>`,
-          ].join("\n\n")
-        );
-        return res.status(200).json({ ok: true });
-      }
+      if (chatId && prefix === "more") {
+        const batch = getBatch(batchId);
+        const offset = Number(offsetStr || 0);
 
-      if (chatId && prefix === "pick") {
-        const sub = await checkRequiredChannels(userId);
-        if (!sub.allowed) {
-          await sendJoinPrompt(chatId, sub.missing, cq.id);
+        if (!batch || !Array.isArray(batch.items) || offset >= batch.items.length) {
+          await answerCallback(cq.id, toSmallCaps("NO MORE PHOTOS OR EXPIRED"), true);
           return res.status(200).json({ ok: true });
         }
 
-        const all = await loadAllEntries("all");
-        const selected = all.find((c) => c.id === arg1);
-        if (!selected) {
-          await answerCallback(cq.id, toSmallCaps("UNAVAILABLE"), true);
-          return res.status(200).json({ ok: true });
-        }
-
-        await answerCallback(cq.id, toSmallCaps(selected.title));
-        await sendStreamCard(chatId, selected);
+        await answerCallback(cq.id, toSmallCaps("LOADING MORE WIDE PHOTOS"));
+        await dispatchSlice(chatId, batchId, batch.items, offset);
         return res.status(200).json({ ok: true });
       }
 
@@ -510,7 +368,6 @@ export default async function handler(req, res) {
 
     const msg = update.message || update.edited_message;
     const chatId = msg?.chat?.id;
-    const userId = msg?.from?.id;
     const rawText = String(msg?.text || "").trim();
 
     if (!chatId || !rawText.startsWith("/")) {
@@ -521,118 +378,57 @@ export default async function handler(req, res) {
     const cmd = first.split("@")[0].toLowerCase();
     const extra = rest.join(" ").trim();
 
-    const sub = await checkRequiredChannels(userId);
-    if (!sub.allowed) {
-      await sendJoinPrompt(chatId, sub.missing);
-      return res.status(200).json({ ok: true });
-    }
-
     if (cmd === "/start" || cmd === "/help") {
-      const help = [
-        `🥂  <b>${esc(toSmallCaps("CRICXCRATE STREAM BOT"))}</b>`,
-        `━━━━━━━━━━━━━━━━━━━━`,
-        `🔺  <code>/Willow</code>`,
-        `🧩  <code>/Star</code>`,
-        `🧩  <code>/Sony</code>`,
-        `💡  <code>/Match name</code>  |  <code>/Tournament</code>`,
-        `━━━━━━━━━━━━━━━━━━━━`,
-        `🤍  ${esc(toSmallCaps("SEND ANY COMMAND ABOVE"))}`,
-      ].join("\n\n");
-
-      await sendText(chatId, help);
-      return res.status(200).json({ ok: true });
-    }
-
-    if (cmd === "/willow" && !extra) {
-      const list = await loadAllEntries("willow");
-      if (!list.length) {
-        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
-        return res.status(200).json({ ok: true });
-      }
-
-      const liveCount = list.filter((i) => i.status === "LIVE").length;
-      const upcomingCount = list.filter((i) => i.status === "UPCOMING").length;
-
-      const head = [
-        `🔺  <b>${esc(toSmallCaps("WILLOW (IST)"))}</b>`,
-        `━━━━━━━━━━━━━━━━━━━━`,
-        `🔺  <b>${esc(toSmallCaps("LIVE"))}</b>  ⇢  <b>${liveCount}</b>    |    ⏳  <b>${esc(toSmallCaps("UPCOMING"))}</b>  ⇢  <b>${upcomingCount}</b>`,
-        `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
-      ].join("\n\n");
-
-      await sendText(chatId, head, buildSelectionKeyboard(list));
-      return res.status(200).json({ ok: true });
-    }
-
-    if (cmd === "/star" && !extra) {
-      const list = await loadAllEntries("star");
-      if (!list.length) {
-        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
-        return res.status(200).json({ ok: true });
-      }
-
-      const head = [
-        `🧩  <b>${esc(toSmallCaps("STAR"))}</b>`,
-        `━━━━━━━━━━━━━━━━━━━━`,
-        `📌  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
-        `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
-      ].join("\n\n");
-
-      await sendText(chatId, head, buildSelectionKeyboard(list));
-      return res.status(200).json({ ok: true });
-    }
-
-    if (cmd === "/sony" && !extra) {
-      const list = await loadAllEntries("sony");
-      if (!list.length) {
-        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
-        return res.status(200).json({ ok: true });
-      }
-
-      const head = [
-        `🧩  <b>${esc(toSmallCaps("SONY"))}</b>`,
-        `━━━━━━━━━━━━━━━━━━━━`,
-        `📌  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
-        `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
-      ].join("\n\n");
-
-      await sendText(chatId, head, buildSelectionKeyboard(list));
-      return res.status(200).json({ ok: true });
-    }
-
-    const query = `${cmd.slice(1)} ${extra}`.trim().toLowerCase();
-    const tokens = query.split(/\s+/).filter(Boolean);
-    const all = await loadAllEntries("all");
-    const matched = all.filter((item) => tokens.every((t) => item.searchText.includes(t)));
-
-    if (!matched.length) {
       await sendText(
         chatId,
         [
-          `🛑  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
-          `━━━━━━━━━━━━━━━━━━━━`,
-          `🫥  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
+          `╔══════════════════════════╗`,
+          `📸  <b>${esc(toSmallCaps("WIDE PHOTO STUDIO"))}</b>`,
+          `╚══════════════════════════╝`,
+          `➠  <code>/rohit sharma 34102</code>  ⇢  ${esc(toSmallCaps("EX: PLAYER PHOTOS"))}\n` +
+            `➠  <code>/rohit sharma</code>        ⇢  ${esc(toSmallCaps("EX: NAME SEARCH"))}\n` +
+            `➥  <code>/photo &lt;query&gt;</code>        ⇢  ${esc(toSmallCaps("EX: /photo virat kohli"))}`,
+        ].join("\n")
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    const query =
+      cmd === "/photo" || cmd === "/photos" || cmd === "/find"
+        ? extra
+        : `${cmd.slice(1)} ${extra}`.trim();
+
+    if (!query) {
+      await sendText(
+        chatId,
+        [
+          `📸  <b>${esc(toSmallCaps("ENTER PLAYER NAME OR ID"))}</b>`,
+          `➠  ${esc(toSmallCaps("EXAMPLE"))} 1  ⇢  <code>/rohit sharma 34102</code>`,
+          `➥  ${esc(toSmallCaps("EXAMPLE"))} 2  ⇢  <code>/rohit sharma</code>`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
     }
 
-    if (matched.length === 1) {
-      await sendStreamCard(chatId, matched[0]);
+    const photos = await fetchCricketerWidePhotos(query);
+    if (!photos.length) {
+      await sendText(
+        chatId,
+        [
+          `🛑  <b>${esc(toSmallCaps(query))}</b>`,
+          `➥  ${esc(toSmallCaps("NO WIDE PHOTOS FOUND"))}`,
+          `➠  ${esc(toSmallCaps("TRY EX"))}  ⇢  <code>/rohit sharma 34102</code>`,
+        ].join("\n\n")
+      );
       return res.status(200).json({ ok: true });
     }
 
-    const head = [
-      `📌  <b>${esc(toSmallCaps(`RESULTS : ${query.toUpperCase()}`))}</b>`,
-      `━━━━━━━━━━━━━━━━━━━━`,
-      `💡  <b>${esc(toSmallCaps("FOUND"))}</b>  ⇢  <b>${matched.length}</b>`,
-      `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
-    ].join("\n\n");
+    const batchId = makeBatchId(query);
+    saveBatch(batchId, photos, query);
+    await dispatchSlice(chatId, batchId, photos, 0);
 
-    await sendText(chatId, head, buildSelectionKeyboard(matched));
     return res.status(200).json({ ok: true });
   } catch (err) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
-
