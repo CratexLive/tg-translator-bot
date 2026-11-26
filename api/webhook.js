@@ -74,6 +74,65 @@ function getStatusEmoji(status) {
   return "🔻";
 }
 
+function convertBdtToIst(bdtStr) {
+  const raw = String(bdtStr || "").trim();
+  if (!raw) return "TBA";
+
+  const timeMatch = raw.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*BDT/i);
+  if (!timeMatch) return raw.replace(/\bBDT\b/gi, "IST");
+
+  let hour = parseInt(timeMatch[1], 10);
+  const minute = parseInt(timeMatch[2] || "0", 10);
+  const mer = timeMatch[3].toUpperCase();
+
+  if (mer === "PM" && hour !== 12) hour += 12;
+  if (mer === "AM" && hour === 12) hour = 0;
+
+  // BDT is UTC+6, IST is UTC+5:30 (-30 mins)
+  let totalMins = hour * 60 + minute - 30;
+  let dayShift = 0;
+  if (totalMins < 0) {
+    totalMins += 1440;
+    dayShift = -1;
+  }
+
+  const istH24 = Math.floor(totalMins / 60);
+  const istMin = totalMins % 60;
+  const istMer = istH24 >= 12 ? "PM" : "AM";
+  const istH12 = istH24 % 12 === 0 ? 12 : istH24 % 12;
+  const istTimePart = `${istH12}:${String(istMin).padStart(2, "0")} ${istMer} IST`;
+
+  const prefix = raw.slice(0, timeMatch.index).trim();
+  if (!prefix) {
+    if (dayShift === -1) return `Prev Day, ${istTimePart}`;
+    return istTimePart;
+  }
+
+  if (/^live\s*at$/i.test(prefix)) {
+    return dayShift === -1 ? `Live at ${istTimePart} (Prev Day)` : `Live at ${istTimePart}`;
+  }
+
+  if (/^tomorrow$/i.test(prefix)) {
+    return dayShift === -1 ? `Today ${istTimePart}` : `Tomorrow ${istTimePart}`;
+  }
+
+  const dateMatch = prefix.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s*([A-Za-z]+)\s+(\d{1,2})$/i);
+  if (dateMatch && dayShift === -1) {
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const dIdx = days.findIndex((d) => d.toLowerCase() === dateMatch[1].toLowerCase());
+    const mIdx = months.findIndex((m) => m.toLowerCase() === dateMatch[2].slice(0, 3).toLowerCase());
+    const dayNum = parseInt(dateMatch[3], 10);
+
+    if (dIdx !== -1 && mIdx !== -1 && dayNum > 1) {
+      const prevDayName = days[(dIdx + 6) % 7];
+      return `${prevDayName}, ${months[mIdx]} ${dayNum - 1} • ${istTimePart}`;
+    }
+  }
+
+  return `${prefix} • ${istTimePart}`;
+}
+
 function buildJioNsLink({ streamUrl, cookie = "", keys = [] }) {
   const cleanUrl = String(streamUrl || "").trim();
   if (!cleanUrl) return "";
@@ -177,8 +236,10 @@ async function loadSportlinkItems() {
       source: "SPORTLINK",
       title: name,
       status: "LIVE",
-      meta: ch?.cookie_expire_ist ? `EXPIRE • ${ch.cookie_expire_ist}` : "JIO SPORTLINK",
-      streams: [{ server: "JioTV MPD", link: nsLink }],
+      timeIst: ch?.cookie_expire_ist || "ACTIVE",
+      metaLabel: "COOKIE EXPIRE",
+      metaValue: ch?.cookie_expire_ist || "ACTIVE",
+      streams: [{ server: "JIOTV MPD", link: nsLink }],
       searchText: `${ch?.id || ""} ${name} sportlink jio`.toLowerCase(),
     });
   }
@@ -200,7 +261,7 @@ async function loadWillowItems() {
 
     const streams = extractWillowStreams(m);
     const status = String(m?.status || "UPCOMING").trim().toUpperCase();
-    const timeText = String(m?.time || "").trim();
+    const istTime = convertBdtToIst(m?.time);
     const id = makeId(`wl|${m?.match_id || ""}|${title}`);
 
     items.push({
@@ -208,9 +269,11 @@ async function loadWillowItems() {
       source: "WILLOW",
       title,
       status,
-      meta: `${status}${timeText ? ` • ${timeText}` : ""}`,
+      timeIst: istTime,
+      metaLabel: "MATCH TIME (IST)",
+      metaValue: istTime,
       streams,
-      searchText: `${m?.match_id || ""} ${title} ${m?.synopsis || ""} ${status} ${timeText} willow`.toLowerCase(),
+      searchText: `${m?.match_id || ""} ${title} ${m?.synopsis || ""} ${status} ${istTime} willow`.toLowerCase(),
     });
   }
 
@@ -301,16 +364,18 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
   );
 
   const text = [
-    `⚠️  <b>${esc(toSmallCaps("CHANNELS REQUIRED"))}</b>`,
+    `⚠️  <b>${esc(toSmallCaps("ACCESS LOCKED • JOIN CHANNELS"))}</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
     ...listLines,
-    `💡  ${esc(toSmallCaps("JOIN ABOVE AND TAP VERIFY"))}  ⇢`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `💡  ${esc(toSmallCaps("JOIN ALL REQUIRED CHANNELS & TAP VERIFY"))}`,
   ].join("\n\n");
 
   const keyboardRows = targetList.map((ch) => [
     { text: `🧩  ${toSmallCaps(`JOIN ${ch.label}`)}`, url: ch.url },
   ]);
   keyboardRows.push([
-    { text: `🥂  ${toSmallCaps("VERIFY JOINED")}`, callback_data: "chk:join" },
+    { text: `🥂  ${toSmallCaps("VERIFY MEMBERSHIP")}`, callback_data: "chk:join" },
   ]);
 
   if (callbackQueryId) {
@@ -322,33 +387,53 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
 function buildItemsKeyboard(items) {
   const rows = [];
   for (const item of items.slice(0, 45)) {
-    const badge = item.source === "WILLOW" ? ` [ ${toSmallCaps(item.status || "INFO")} ]` : "";
-    const text = `🧩  ${toSmallCaps(item.title)}${badge}`.slice(0, 60);
+    const mark = item.source === "WILLOW" ? getStatusEmoji(item.status) : "🧩";
+    const text = `${mark}  ${toSmallCaps(item.title)}`.slice(0, 60);
     rows.push([{ text, callback_data: `ns:${item.id}` }]);
   }
   return { inline_keyboard: rows };
 }
 
+function buildHomeKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        { text: `🧩  ${toSmallCaps("SPORTLINK TV")}`, callback_data: "nav:sportlink" },
+        { text: `🔺  ${toSmallCaps("WILLOW LIVE & UPCOMING")}`, callback_data: "nav:willow" },
+      ],
+      [
+        { text: `🥂  ${toSmallCaps("CRICXCRATE")}`, url: REQUIRED_CHANNELS[0].url },
+        { text: `🥂  ${toSmallCaps("FOOT X CRATE")}`, url: REQUIRED_CHANNELS[1].url },
+      ],
+    ],
+  };
+}
+
 async function sendNsLinksMessage(chatId, item) {
+  const statusMark = getStatusEmoji(item.status);
+  const header = [
+    `${statusMark}  <b>${esc(toSmallCaps(item.title))}</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `📌  <b>${esc(toSmallCaps("SOURCE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.source))}</b>`,
+    `⏳  <b>${esc(toSmallCaps(item.metaLabel))}</b>  ⇢  <code>${esc(item.metaValue)}</code>`,
+  ];
+
   if (!item.streams?.length) {
-    await sendText(
-      chatId,
-      `⏳  <b>${esc(toSmallCaps(item.title))}</b>\n\n📌  <code>${esc(item.meta)}</code>\n\n🫥  ${esc(toSmallCaps("STREAM LINK NOT AVAILABLE YET"))}`
-    );
+    header.push(`━━━━━━━━━━━━━━━━━━━━`);
+    header.push(`🫥  <b>${esc(toSmallCaps("STREAM LINK NOT LIVE YET"))}</b>`);
+    header.push(`💡  ${esc(toSmallCaps("CHECK AGAIN NEAR MATCH START TIME"))}`);
+    await sendText(chatId, header.join("\n\n"));
     return;
   }
 
+  header.push(`━━━━━━━━━━━━━━━━━━━━`);
+  header.push(`💡  <b>${esc(toSmallCaps("TAP LINK TO COPY FOR NS PLAYER"))}</b>`);
+
   const streamBlocks = item.streams.map(
-    (s) => `💡  <b>${esc(toSmallCaps(s.server))}</b>\n<code>${esc(s.link)}</code>`
+    (s) => `🥂  <b>${esc(toSmallCaps(s.server))}</b>\n<code>${esc(s.link)}</code>`
   );
 
-  const message = [
-    `${getStatusEmoji(item.status)}  <b>${esc(toSmallCaps(item.title))}</b>`,
-    `📌  <code>${esc(item.meta)}</code>`,
-    ...streamBlocks,
-  ].join("\n\n");
-
-  await sendText(chatId, message);
+  await sendText(chatId, [...header, ...streamBlocks].join("\n\n"));
 }
 
 async function sendText(chatId, text, replyMarkup = null) {
@@ -371,6 +456,44 @@ async function answerCallback(id, text = "", alert = false) {
   }).catch(() => {});
 }
 
+async function sendSourceMenu(chatId, sourceKey) {
+  if (sourceKey === "sportlink") {
+    const list = await loadAllItems("sportlink");
+    if (!list.length) {
+      await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO SPORTLINK CHANNELS AVAILABLE"))}</b>`);
+      return;
+    }
+
+    const head = [
+      `🧩  <b>${esc(toSmallCaps("SPORTLINK LIVE TV CHANNELS"))}</b>`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `📌  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b> ${esc(toSmallCaps("CHANNELS"))}`,
+      `💡  ${esc(toSmallCaps("SELECT A CHANNEL TO GET NS PLAYER LINK"))}`,
+    ].join("\n\n");
+
+    await sendText(chatId, head, buildItemsKeyboard(list));
+    return;
+  }
+
+  const list = await loadAllItems("willow");
+  if (!list.length) {
+    await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO WILLOW MATCHES AVAILABLE"))}</b>`);
+    return;
+  }
+
+  const liveCount = list.filter((i) => i.status === "LIVE").length;
+  const upcomingCount = list.filter((i) => i.status === "UPCOMING").length;
+
+  const head = [
+    `🔺  <b>${esc(toSmallCaps("WILLOW CRICKET HUB (IST)"))}</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `🔺  <b>${esc(toSmallCaps("LIVE"))}</b>  ⇢  <b>${liveCount}</b>    |    ⏳  <b>${esc(toSmallCaps("UPCOMING"))}</b>  ⇢  <b>${upcomingCount}</b>`,
+    `💡  ${esc(toSmallCaps("TAP ANY MATCH BELOW FOR NS PLAYER STREAMS"))}`,
+  ].join("\n\n");
+
+  await sendText(chatId, head, buildItemsKeyboard(list));
+}
+
 export default async function handler(req, res) {
   if (req.method === "GET") return res.status(200).send("NS Player Bot Active");
   if (req.method !== "POST") return res.status(405).end();
@@ -391,11 +514,24 @@ export default async function handler(req, res) {
           await sendJoinPrompt(chatId, sub.missing, cq.id);
           return res.status(200).json({ ok: true });
         }
-        await answerCallback(cq.id, toSmallCaps("ALL CHANNELS VERIFIED"), false);
-        await sendText(
-          chatId,
-          `🥂  <b>${esc(toSmallCaps("VERIFIED"))}</b>\n\n🤍  ${esc(toSmallCaps("USE /sportlink OR /willow"))}`
-        );
+        await answerCallback(cq.id, toSmallCaps("MEMBERSHIP VERIFIED"), false);
+        const welcome = [
+          `🥂  <b>${esc(toSmallCaps("MEMBERSHIP VERIFIED"))}</b>`,
+          `━━━━━━━━━━━━━━━━━━━━`,
+          `🤍  ${esc(toSmallCaps("CHOOSE A SOURCE BELOW OR TYPE /<KEYWORD>"))}`,
+        ].join("\n\n");
+        await sendText(chatId, welcome, buildHomeKeyboard());
+        return res.status(200).json({ ok: true });
+      }
+
+      if (chatId && prefix === "nav") {
+        const sub = await checkRequiredChannels(userId);
+        if (!sub.allowed) {
+          await sendJoinPrompt(chatId, sub.missing, cq.id);
+          return res.status(200).json({ ok: true });
+        }
+        await answerCallback(cq.id, toSmallCaps(arg1.toUpperCase()));
+        await sendSourceMenu(chatId, arg1);
         return res.status(200).json({ ok: true });
       }
 
@@ -409,7 +545,7 @@ export default async function handler(req, res) {
         const all = await loadAllItems("all");
         const selected = all.find((c) => c.id === arg1);
         if (!selected) {
-          await answerCallback(cq.id, toSmallCaps("ITEM NOT FOUND"), true);
+          await answerCallback(cq.id, toSmallCaps("ITEM EXPIRED OR NOT FOUND"), true);
           return res.status(200).json({ ok: true });
         }
 
@@ -442,47 +578,26 @@ export default async function handler(req, res) {
 
     if (cmd === "/start" || cmd === "/help") {
       const help = [
-        `📌  <b>${esc(toSmallCaps("NS PLAYER BOT COMMANDS"))}</b>`,
-        `🧩  <code>/sportlink</code>  ⇢  ${esc(toSmallCaps("JIO SPORTLINK CHANNELS"))}`,
-        `🧩  <code>/willow</code>  ⇢  ${esc(toSmallCaps("WILLOW CRICKET MATCHES"))}`,
-        `🤍  <code>/&lt;keyword&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH CHANNEL OR MATCH"))}`,
+        `🥂  <b>${esc(toSmallCaps("CRICXCRATE • NS PLAYER STREAM HUB"))}</b>`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `🧩  <code>/sportlink</code>  ⇢  ${esc(toSmallCaps("JIO SPORTS HD CHANNELS"))}`,
+        `🔺  <code>/willow</code>  ⇢  ${esc(toSmallCaps("WILLOW CRICKET MATCHES (IST)"))}`,
+        `💡  <code>/&lt;keyword&gt;</code>  ⇢  ${esc(toSmallCaps("INSTANT SEARCH (E.G. /sony, /india)"))}`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `🤍  ${esc(toSmallCaps("TAP A BUTTON BELOW TO BROWSE"))}`,
       ].join("\n\n");
 
-      await sendText(chatId, help);
+      await sendText(chatId, help, buildHomeKeyboard());
       return res.status(200).json({ ok: true });
     }
 
     if (cmd === "/sportlink" || cmd === "/channels") {
-      const list = await loadAllItems("sportlink");
-      if (!list.length) {
-        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO SPORTLINK CHANNELS"))}</b>`);
-        return res.status(200).json({ ok: true });
-      }
-
-      const head = [
-        `🧩  <b>${esc(toSmallCaps("SPORTLINK CHANNELS"))}</b>`,
-        `📌  ${esc(toSmallCaps("TOTAL"))}  ⟶  <b>${list.length}</b>`,
-        `🤍  ${esc(toSmallCaps("TAP A CHANNEL BELOW"))}  ⇢`,
-      ].join("\n\n");
-
-      await sendText(chatId, head, buildItemsKeyboard(list));
+      await sendSourceMenu(chatId, "sportlink");
       return res.status(200).json({ ok: true });
     }
 
     if (cmd === "/willow") {
-      const list = await loadAllItems("willow");
-      if (!list.length) {
-        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO WILLOW MATCHES"))}</b>`);
-        return res.status(200).json({ ok: true });
-      }
-
-      const head = [
-        `🧩  <b>${esc(toSmallCaps("WILLOW MATCHES"))}</b>`,
-        `📌  ${esc(toSmallCaps("TOTAL"))}  ⟶  <b>${list.length}</b>`,
-        `🤍  ${esc(toSmallCaps("TAP A MATCH BELOW"))}  ⇢`,
-      ].join("\n\n");
-
-      await sendText(chatId, head, buildItemsKeyboard(list));
+      await sendSourceMenu(chatId, "willow");
       return res.status(200).json({ ok: true });
     }
 
@@ -494,7 +609,11 @@ export default async function handler(req, res) {
     if (!matched.length) {
       await sendText(
         chatId,
-        `🛑  <b>${esc(toSmallCaps(query.toUpperCase()))}</b>\n\n🫥  ${esc(toSmallCaps("NO MATCHING RESULTS"))}`
+        [
+          `🛑  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
+          `━━━━━━━━━━━━━━━━━━━━`,
+          `🫥  ${esc(toSmallCaps("TRY /sportlink OR /willow TO BROWSE ALL"))}`,
+        ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
     }
@@ -505,9 +624,10 @@ export default async function handler(req, res) {
     }
 
     const head = [
-      `📌  <b>${esc(toSmallCaps(`RESULTS : ${query.toUpperCase()}`))}</b>`,
-      `💡  ${esc(toSmallCaps("FOUND"))}  ⇢  <b>${matched.length}</b>`,
-      `🤍  ${esc(toSmallCaps("TAP AN ITEM BELOW"))}  ⇢`,
+      `📌  <b>${esc(toSmallCaps(`SEARCH : ${query.toUpperCase()}`))}</b>`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `💡  <b>${esc(toSmallCaps("MATCHED"))}</b>  ⇢  <b>${matched.length}</b> ${esc(toSmallCaps("RESULTS"))}`,
+      `🤍  ${esc(toSmallCaps("TAP AN ITEM BELOW TO GET LINK"))}`,
     ].join("\n\n");
 
     await sendText(chatId, head, buildItemsKeyboard(matched));
