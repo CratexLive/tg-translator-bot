@@ -3,19 +3,15 @@ const TARGET_CHANNEL_ID = String(process.env.TARGET_CHANNEL_ID || "-100587915815
 
 const SOURCE_PREFIX = "https://cxc45.pages.dev/okjanu/?id=";
 const TARGET_PREFIX = "https://footxcrate.pages.dev/okjanu?id=";
+const DOMAIN_LINK_REGEX = /https?:\/\/cxc45\.pages\.dev\/okjanu\/?\?id=([^\s)]+)/gi;
 
 function rewriteLinks(text = "") {
-  const escapedPrefix = SOURCE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const exactRegex = new RegExp(`${escapedPrefix}([^\\s)]+)`, "gi");
+  const raw = String(text);
+  DOMAIN_LINK_REGEX.lastIndex = 0;
+  if (!DOMAIN_LINK_REGEX.test(raw)) return null;
 
-  let updated = String(text).replace(exactRegex, (_, id) => `${TARGET_PREFIX}${id}`);
-
-  updated = updated.replace(
-    /https?:\/\/cxc45\.pages\.dev\/okjanu\/?\?id=([^\s)]+)/gi,
-    (_, id) => `${TARGET_PREFIX}${id}`
-  );
-
-  return updated;
+  DOMAIN_LINK_REGEX.lastIndex = 0;
+  return raw.replace(DOMAIN_LINK_REGEX, (_, id) => `${TARGET_PREFIX}${id}`);
 }
 
 async function telegramApi(method, payload) {
@@ -46,6 +42,8 @@ async function forwardModifiedPost(msg) {
   if (typeof originalText !== "string") return;
 
   const updatedText = rewriteLinks(originalText);
+  if (updatedText === null) return;
+
   const entities = Array.isArray(msg?.entities) ? msg.entities : msg?.caption_entities;
 
   if (msg?.photo?.length) {
