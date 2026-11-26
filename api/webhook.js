@@ -171,8 +171,8 @@ function extractEventStreams(match) {
   const streams = [];
 
   const groups = [
-    { obj: match?.stream_url_alpha, tag: "LINK A" },
-    { obj: match?.stream_url_bravo, tag: "LINK B" },
+    { obj: match?.stream_url_alpha, tag: "SERVER A" },
+    { obj: match?.stream_url_bravo, tag: "SERVER B" },
   ];
 
   for (const { obj, tag } of groups) {
@@ -228,9 +228,17 @@ async function loadPrimaryFeed() {
     });
     if (!title || !line) continue;
 
+    const lower = title.toLowerCase();
+    const network = lower.includes("star")
+      ? "star"
+      : lower.includes("sony")
+        ? "sony"
+        : "other";
+
     const id = makeId(`p|${entry?.id || ""}|${title}`);
     items.push({
       id,
+      network,
       title,
       status: "LIVE",
       timingLabel: "VALID TILL",
@@ -262,6 +270,7 @@ async function loadEventsFeed() {
 
     items.push({
       id,
+      network: "willow",
       title,
       status,
       timingLabel: "SCHEDULE (IST)",
@@ -275,8 +284,15 @@ async function loadEventsFeed() {
 }
 
 async function loadAllEntries(mode = "all") {
-  if (mode === "primary") return loadPrimaryFeed();
-  if (mode === "events") return loadEventsFeed();
+  if (mode === "willow") return loadEventsFeed();
+  if (mode === "star") {
+    const list = await loadPrimaryFeed();
+    return list.filter((i) => i.network === "star");
+  }
+  if (mode === "sony") {
+    const list = await loadPrimaryFeed();
+    return list.filter((i) => i.network === "sony");
+  }
 
   const [p, e] = await Promise.allSettled([loadPrimaryFeed(), loadEventsFeed()]);
   return [
@@ -461,7 +477,10 @@ export default async function handler(req, res) {
           [
             `🥂  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
             `━━━━━━━━━━━━━━━━━━━━`,
-            `🤍  ${esc(toSmallCaps("SEND /start OR SEARCH WITH /<KEYWORD>"))}`,
+            `🧩  <code>/Willow</code>`,
+            `🧩  <code>/Star</code>`,
+            `🧩  <code>/Sony</code>`,
+            `💡  <code>/Match name</code>  |  <code>/Tournament</code>`,
           ].join("\n\n")
         );
         return res.status(200).json({ ok: true });
@@ -512,39 +531,22 @@ export default async function handler(req, res) {
       const help = [
         `🥂  <b>${esc(toSmallCaps("CRICXCRATE STREAM BOT"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `🧩  <code>/hd</code>  ⇢  ${esc(toSmallCaps("BROWSE HD FEEDS"))}`,
-        `🔺  <code>/matches</code>  ⇢  ${esc(toSmallCaps("BROWSE CRICKET SCHEDULE (IST)"))}`,
-        `💡  <code>/&lt;keyword&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH BY NAME OR TEAM"))}`,
+        `🔺  <code>/Willow</code>`,
+        `🧩  <code>/Star</code>`,
+        `🧩  <code>/Sony</code>`,
+        `💡  <code>/Match name</code>  |  <code>/Tournament</code>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `🤍  ${esc(toSmallCaps("TYPE A COMMAND TO BEGIN"))}`,
+        `🤍  ${esc(toSmallCaps("SEND ANY COMMAND ABOVE"))}`,
       ].join("\n\n");
 
       await sendText(chatId, help);
       return res.status(200).json({ ok: true });
     }
 
-    if (cmd === "/hd" || cmd === "/sportlink" || cmd === "/channels") {
-      const list = await loadAllEntries("primary");
+    if (cmd === "/willow" && !extra) {
+      const list = await loadAllEntries("willow");
       if (!list.length) {
         await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
-        return res.status(200).json({ ok: true });
-      }
-
-      const head = [
-        `🧩  <b>${esc(toSmallCaps("AVAILABLE HD FEEDS"))}</b>`,
-        `━━━━━━━━━━━━━━━━━━━━`,
-        `📌  <b>${esc(toSmallCaps("COUNT"))}</b>  ⇢  <b>${list.length}</b>`,
-        `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
-      ].join("\n\n");
-
-      await sendText(chatId, head, buildSelectionKeyboard(list));
-      return res.status(200).json({ ok: true });
-    }
-
-    if (cmd === "/matches" || cmd === "/willow") {
-      const list = await loadAllEntries("events");
-      if (!list.length) {
-        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO MATCHES FOUND"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
@@ -552,9 +554,45 @@ export default async function handler(req, res) {
       const upcomingCount = list.filter((i) => i.status === "UPCOMING").length;
 
       const head = [
-        `🔺  <b>${esc(toSmallCaps("MATCH SCHEDULE (IST)"))}</b>`,
+        `🔺  <b>${esc(toSmallCaps("WILLOW (IST)"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
         `🔺  <b>${esc(toSmallCaps("LIVE"))}</b>  ⇢  <b>${liveCount}</b>    |    ⏳  <b>${esc(toSmallCaps("UPCOMING"))}</b>  ⇢  <b>${upcomingCount}</b>`,
+        `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
+      ].join("\n\n");
+
+      await sendText(chatId, head, buildSelectionKeyboard(list));
+      return res.status(200).json({ ok: true });
+    }
+
+    if (cmd === "/star" && !extra) {
+      const list = await loadAllEntries("star");
+      if (!list.length) {
+        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        return res.status(200).json({ ok: true });
+      }
+
+      const head = [
+        `🧩  <b>${esc(toSmallCaps("STAR"))}</b>`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `📌  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
+        `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
+      ].join("\n\n");
+
+      await sendText(chatId, head, buildSelectionKeyboard(list));
+      return res.status(200).json({ ok: true });
+    }
+
+    if (cmd === "/sony" && !extra) {
+      const list = await loadAllEntries("sony");
+      if (!list.length) {
+        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        return res.status(200).json({ ok: true });
+      }
+
+      const head = [
+        `🧩  <b>${esc(toSmallCaps("SONY"))}</b>`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `📌  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
         `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
       ].join("\n\n");
 
@@ -571,7 +609,7 @@ export default async function handler(req, res) {
       await sendText(
         chatId,
         [
-          `🛑  <b>${esc(toSmallCaps(`NO MATCH : ${query.toUpperCase()}`))}</b>`,
+          `🛑  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
           `━━━━━━━━━━━━━━━━━━━━`,
           `🫥  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
         ].join("\n\n")
@@ -597,3 +635,4 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
+
