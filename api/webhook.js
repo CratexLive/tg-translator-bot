@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
-const SPORTLINK_URL = "https://sportlink-tv11.pages.dev/Data.json";
-const WILLOW_URL =
+const FEED_PRIMARY_URL = "https://sportlink-tv11.pages.dev/Data.json";
+const FEED_EVENTS_URL =
   "https://raw.githubusercontent.com/srhady/willow-event/refs/heads/main/live_sports.json";
 
 const REQUIRED_CHANNELS = [
@@ -103,7 +103,7 @@ function convertBdtToIst(bdtStr) {
 
   const prefix = raw.slice(0, timeMatch.index).trim();
   if (!prefix) {
-    return dayShift === -1 ? `Prev Day, ${istTimePart}` : istTimePart;
+    return dayShift === -1 ? `Prev Day • ${istTimePart}` : istTimePart;
   }
 
   if (/^live\s*at$/i.test(prefix)) {
@@ -111,7 +111,7 @@ function convertBdtToIst(bdtStr) {
   }
 
   if (/^tomorrow$/i.test(prefix)) {
-    return dayShift === -1 ? `Today ${istTimePart}` : `Tomorrow ${istTimePart}`;
+    return dayShift === -1 ? `Today • ${istTimePart}` : `Tomorrow • ${istTimePart}`;
   }
 
   const dateMatch = prefix.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s*([A-Za-z]+)\s+(\d{1,2})$/i);
@@ -131,7 +131,7 @@ function convertBdtToIst(bdtStr) {
   return `${prefix} • ${istTimePart}`;
 }
 
-function buildJioNsLink({ streamUrl, cookie = "", keys = [] }) {
+function buildDirectPlayerLine({ streamUrl, cookie = "", keys = [] }) {
   const cleanUrl = String(streamUrl || "").trim();
   if (!cleanUrl) return "";
 
@@ -156,7 +156,7 @@ function buildJioNsLink({ streamUrl, cookie = "", keys = [] }) {
   return `${urlWithQuery}|${parts.join("&")}`;
 }
 
-function buildWillowNsLink(streamUrl, drmKey = "") {
+function buildEventPlayerLine(streamUrl, drmKey = "") {
   const cleanUrl = String(streamUrl || "").trim();
   if (!cleanUrl) return "";
 
@@ -166,23 +166,23 @@ function buildWillowNsLink(streamUrl, drmKey = "") {
   return `${cleanUrl}|drmScheme=clearkey&drmLicense=${cleanKey}`;
 }
 
-function extractWillowStreams(match) {
+function extractEventStreams(match) {
   const drmKey = String(match?.drm_key || "").trim();
   const streams = [];
 
   const groups = [
-    { obj: match?.stream_url_alpha, tag: "ALPHA" },
-    { obj: match?.stream_url_bravo, tag: "BRAVO" },
+    { obj: match?.stream_url_alpha, tag: "LINK A" },
+    { obj: match?.stream_url_bravo, tag: "LINK B" },
   ];
 
   for (const { obj, tag } of groups) {
     if (!obj || typeof obj !== "object") continue;
     for (const [serverName, url] of Object.entries(obj)) {
-      const link = buildWillowNsLink(url, drmKey);
-      if (!link) continue;
+      const line = buildEventPlayerLine(url, drmKey);
+      if (!line) continue;
       streams.push({
-        server: `${tag} • ${String(serverName).trim()}`,
-        link,
+        label: `${tag} • ${String(serverName).trim()}`,
+        line,
       });
     }
   }
@@ -206,49 +206,48 @@ async function fetchJson(url, timeoutMs = 6000) {
   }
 }
 
-async function loadSportlinkItems() {
-  const cached = getCached("src:sportlink");
+async function loadPrimaryFeed() {
+  const cached = getCached("feed:primary");
   if (cached) return cached;
 
-  const data = await fetchJson(SPORTLINK_URL);
+  const data = await fetchJson(FEED_PRIMARY_URL);
   const rawList = Array.isArray(data?.channels) ? data.channels : [];
   const items = [];
 
-  for (const ch of rawList) {
-    const name = String(ch?.name || "").trim();
-    const keys = Array.isArray(ch?.sportlink) && ch.sportlink.length
-      ? ch.sportlink
-      : ch?.key_id && ch?.key
-        ? [`${ch.key_id}:${ch.key}`]
+  for (const entry of rawList) {
+    const title = String(entry?.name || "").trim();
+    const keys = Array.isArray(entry?.sportlink) && entry.sportlink.length
+      ? entry.sportlink
+      : entry?.key_id && entry?.key
+        ? [`${entry.key_id}:${entry.key}`]
         : [];
-    const nsLink = buildJioNsLink({
-      streamUrl: ch?.stream_url,
-      cookie: ch?.cookie,
+    const line = buildDirectPlayerLine({
+      streamUrl: entry?.stream_url,
+      cookie: entry?.cookie,
       keys,
     });
-    if (!name || !nsLink) continue;
+    if (!title || !line) continue;
 
-    const id = makeId(`sl|${ch?.id || ""}|${name}`);
+    const id = makeId(`p|${entry?.id || ""}|${title}`);
     items.push({
       id,
-      source: "SPORTLINK",
-      title: name,
+      title,
       status: "LIVE",
-      metaLabel: "COOKIE EXPIRE",
-      metaValue: ch?.cookie_expire_ist || "ACTIVE",
-      streams: [{ server: "JIOTV MPD", link: nsLink }],
-      searchText: `${ch?.id || ""} ${name} sportlink jio`.toLowerCase(),
+      timingLabel: "VALID TILL",
+      timingValue: entry?.cookie_expire_ist || "ACTIVE",
+      streams: [{ label: "DIRECT STREAM", line }],
+      searchText: `${entry?.id || ""} ${title}`.toLowerCase(),
     });
   }
 
-  return setCached("src:sportlink", items);
+  return setCached("feed:primary", items);
 }
 
-async function loadWillowItems() {
-  const cached = getCached("src:willow");
+async function loadEventsFeed() {
+  const cached = getCached("feed:events");
   if (cached) return cached;
 
-  const data = await fetchJson(WILLOW_URL);
+  const data = await fetchJson(FEED_EVENTS_URL);
   const matches = Array.isArray(data?.Matches) ? data.Matches : [];
   const items = [];
 
@@ -256,34 +255,33 @@ async function loadWillowItems() {
     const title = String(m?.title || "").trim();
     if (!title) continue;
 
-    const streams = extractWillowStreams(m);
+    const streams = extractEventStreams(m);
     const status = String(m?.status || "UPCOMING").trim().toUpperCase();
     const istTime = convertBdtToIst(m?.time);
-    const id = makeId(`wl|${m?.match_id || ""}|${title}`);
+    const id = makeId(`e|${m?.match_id || ""}|${title}`);
 
     items.push({
       id,
-      source: "WILLOW",
       title,
       status,
-      metaLabel: "MATCH TIME (IST)",
-      metaValue: istTime,
+      timingLabel: "SCHEDULE (IST)",
+      timingValue: istTime,
       streams,
-      searchText: `${m?.match_id || ""} ${title} ${m?.synopsis || ""} ${status} ${istTime} willow`.toLowerCase(),
+      searchText: `${m?.match_id || ""} ${title} ${m?.synopsis || ""} ${status} ${istTime}`.toLowerCase(),
     });
   }
 
-  return setCached("src:willow", items);
+  return setCached("feed:events", items);
 }
 
-async function loadAllItems(sourceFilter = "all") {
-  if (sourceFilter === "sportlink") return loadSportlinkItems();
-  if (sourceFilter === "willow") return loadWillowItems();
+async function loadAllEntries(mode = "all") {
+  if (mode === "primary") return loadPrimaryFeed();
+  if (mode === "events") return loadEventsFeed();
 
-  const [sl, wl] = await Promise.allSettled([loadSportlinkItems(), loadWillowItems()]);
+  const [p, e] = await Promise.allSettled([loadPrimaryFeed(), loadEventsFeed()]);
   return [
-    ...(sl.status === "fulfilled" ? sl.value : []),
-    ...(wl.status === "fulfilled" ? wl.value : []),
+    ...(p.status === "fulfilled" ? p.value : []),
+    ...(e.status === "fulfilled" ? e.value : []),
   ];
 }
 
@@ -360,61 +358,61 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
   );
 
   const text = [
-    `⚠️  <b>${esc(toSmallCaps("ACCESS LOCKED • JOIN CHANNELS"))}</b>`,
+    `⚠️  <b>${esc(toSmallCaps("ACCESS LOCKED"))}</b>`,
     `━━━━━━━━━━━━━━━━━━━━`,
     ...listLines,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `💡  ${esc(toSmallCaps("JOIN REQUIRED CHANNELS & TAP VERIFY"))}`,
+    `💡  ${esc(toSmallCaps("JOIN ABOVE & TAP VERIFY"))}`,
   ].join("\n\n");
 
   const keyboardRows = targetList.map((ch) => [
     { text: `🧩  ${toSmallCaps(`JOIN ${ch.label}`)}`, url: ch.url },
   ]);
   keyboardRows.push([
-    { text: `🥂  ${toSmallCaps("VERIFY MEMBERSHIP")}`, callback_data: "chk:join" },
+    { text: `🥂  ${toSmallCaps("VERIFY JOINED")}`, callback_data: "chk:join" },
   ]);
 
   if (callbackQueryId) {
-    await answerCallback(callbackQueryId, toSmallCaps("JOIN REQUIRED CHANNELS FIRST"), true);
+    await answerCallback(callbackQueryId, toSmallCaps("JOIN REQUIRED FIRST"), true);
   }
   await sendText(chatId, text, { inline_keyboard: keyboardRows });
 }
 
-function buildItemsKeyboard(items) {
+function buildSelectionKeyboard(items) {
   const rows = [];
   for (const item of items.slice(0, 45)) {
-    const mark = item.source === "WILLOW" ? getStatusEmoji(item.status) : "🧩";
+    const mark = getStatusEmoji(item.status);
     const text = `${mark}  ${toSmallCaps(item.title)}`.slice(0, 60);
-    rows.push([{ text, callback_data: `ns:${item.id}` }]);
+    rows.push([{ text, callback_data: `pick:${item.id}` }]);
   }
   return { inline_keyboard: rows };
 }
 
-async function sendNsLinksMessage(chatId, item) {
-  const statusMark = getStatusEmoji(item.status);
-  const header = [
-    `${statusMark}  <b>${esc(toSmallCaps(item.title))}</b>`,
+async function sendStreamCard(chatId, item) {
+  const mark = getStatusEmoji(item.status);
+  const lines = [
+    `${mark}  <b>${esc(toSmallCaps(item.title))}</b>`,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `📌  <b>${esc(toSmallCaps("SOURCE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.source))}</b>`,
-    `⏳  <b>${esc(toSmallCaps(item.metaLabel))}</b>  ⇢  <code>${esc(item.metaValue)}</code>`,
+    `📌  <b>${esc(toSmallCaps("STATE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.status))}</b>`,
+    `⏳  <b>${esc(toSmallCaps(item.timingLabel))}</b>  ⇢  <code>${esc(item.timingValue)}</code>`,
   ];
 
   if (!item.streams?.length) {
-    header.push(`━━━━━━━━━━━━━━━━━━━━`);
-    header.push(`🫥  <b>${esc(toSmallCaps("STREAM LINK NOT LIVE YET"))}</b>`);
-    header.push(`💡  ${esc(toSmallCaps("CHECK AGAIN NEAR MATCH START TIME"))}`);
-    await sendText(chatId, header.join("\n\n"));
+    lines.push(`━━━━━━━━━━━━━━━━━━━━`);
+    lines.push(`🫥  <b>${esc(toSmallCaps("NO ACTIVE STREAM RIGHT NOW"))}</b>`);
+    lines.push(`💡  ${esc(toSmallCaps("TRY AGAIN CLOSER TO START TIME"))}`);
+    await sendText(chatId, lines.join("\n\n"));
     return;
   }
 
-  header.push(`━━━━━━━━━━━━━━━━━━━━`);
-  header.push(`💡  <b>${esc(toSmallCaps("TAP LINK TO COPY FOR NS PLAYER"))}</b>`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`💡  <b>${esc(toSmallCaps("TAP TO COPY FOR PLAYER"))}</b>`);
 
-  const streamBlocks = item.streams.map(
-    (s) => `🥂  <b>${esc(toSmallCaps(s.server))}</b>\n<code>${esc(s.link)}</code>`
-  );
+  for (const s of item.streams) {
+    lines.push(`🥂  <b>${esc(toSmallCaps(s.label))}</b>\n<code>${esc(s.line)}</code>`);
+  }
 
-  await sendText(chatId, [...header, ...streamBlocks].join("\n\n"));
+  await sendText(chatId, lines.join("\n\n"));
 }
 
 async function sendText(chatId, text, replyMarkup = null) {
@@ -438,7 +436,7 @@ async function answerCallback(id, text = "", alert = false) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === "GET") return res.status(200).send("NS Player Bot Active");
+  if (req.method === "GET") return res.status(200).send("Bot Active");
   if (req.method !== "POST") return res.status(405).end();
 
   try {
@@ -457,34 +455,34 @@ export default async function handler(req, res) {
           await sendJoinPrompt(chatId, sub.missing, cq.id);
           return res.status(200).json({ ok: true });
         }
-        await answerCallback(cq.id, toSmallCaps("MEMBERSHIP VERIFIED"), false);
-        const verifiedMsg = [
-          `🥂  <b>${esc(toSmallCaps("MEMBERSHIP VERIFIED"))}</b>`,
-          `━━━━━━━━━━━━━━━━━━━━`,
-          `🧩  <code>/sportlink</code>  ⇢  ${esc(toSmallCaps("JIO SPORTS HD CHANNELS"))}`,
-          `🔺  <code>/willow</code>  ⇢  ${esc(toSmallCaps("WILLOW CRICKET MATCHES (IST)"))}`,
-          `💡  <code>/&lt;keyword&gt;</code>  ⇢  ${esc(toSmallCaps("INSTANT SEARCH"))}`,
-        ].join("\n\n");
-        await sendText(chatId, verifiedMsg);
+        await answerCallback(cq.id, toSmallCaps("VERIFIED"), false);
+        await sendText(
+          chatId,
+          [
+            `🥂  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
+            `━━━━━━━━━━━━━━━━━━━━`,
+            `🤍  ${esc(toSmallCaps("SEND /start OR SEARCH WITH /<KEYWORD>"))}`,
+          ].join("\n\n")
+        );
         return res.status(200).json({ ok: true });
       }
 
-      if (chatId && prefix === "ns") {
+      if (chatId && prefix === "pick") {
         const sub = await checkRequiredChannels(userId);
         if (!sub.allowed) {
           await sendJoinPrompt(chatId, sub.missing, cq.id);
           return res.status(200).json({ ok: true });
         }
 
-        const all = await loadAllItems("all");
+        const all = await loadAllEntries("all");
         const selected = all.find((c) => c.id === arg1);
         if (!selected) {
-          await answerCallback(cq.id, toSmallCaps("ITEM EXPIRED OR NOT FOUND"), true);
+          await answerCallback(cq.id, toSmallCaps("UNAVAILABLE"), true);
           return res.status(200).json({ ok: true });
         }
 
         await answerCallback(cq.id, toSmallCaps(selected.title));
-        await sendNsLinksMessage(chatId, selected);
+        await sendStreamCard(chatId, selected);
         return res.status(200).json({ ok: true });
       }
 
@@ -512,41 +510,41 @@ export default async function handler(req, res) {
 
     if (cmd === "/start" || cmd === "/help") {
       const help = [
-        `🥂  <b>${esc(toSmallCaps("CRICXCRATE • NS PLAYER STREAM HUB"))}</b>`,
+        `🥂  <b>${esc(toSmallCaps("CRICXCRATE STREAM BOT"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `🧩  <code>/sportlink</code>  ⇢  ${esc(toSmallCaps("JIO SPORTS HD CHANNELS"))}`,
-        `🔺  <code>/willow</code>  ⇢  ${esc(toSmallCaps("WILLOW CRICKET MATCHES (IST)"))}`,
-        `💡  <code>/&lt;keyword&gt;</code>  ⇢  ${esc(toSmallCaps("INSTANT SEARCH (E.G. /sony, /india)"))}`,
+        `🧩  <code>/hd</code>  ⇢  ${esc(toSmallCaps("BROWSE HD FEEDS"))}`,
+        `🔺  <code>/matches</code>  ⇢  ${esc(toSmallCaps("BROWSE CRICKET SCHEDULE (IST)"))}`,
+        `💡  <code>/&lt;keyword&gt;</code>  ⇢  ${esc(toSmallCaps("SEARCH BY NAME OR TEAM"))}`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `🤍  ${esc(toSmallCaps("SEND A COMMAND TO GET STREAMS"))}`,
+        `🤍  ${esc(toSmallCaps("TYPE A COMMAND TO BEGIN"))}`,
       ].join("\n\n");
 
       await sendText(chatId, help);
       return res.status(200).json({ ok: true });
     }
 
-    if (cmd === "/sportlink" || cmd === "/channels") {
-      const list = await loadAllItems("sportlink");
+    if (cmd === "/hd" || cmd === "/sportlink" || cmd === "/channels") {
+      const list = await loadAllEntries("primary");
       if (!list.length) {
-        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO SPORTLINK CHANNELS AVAILABLE"))}</b>`);
+        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
       const head = [
-        `🧩  <b>${esc(toSmallCaps("SPORTLINK LIVE TV CHANNELS"))}</b>`,
+        `🧩  <b>${esc(toSmallCaps("AVAILABLE HD FEEDS"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `📌  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b> ${esc(toSmallCaps("CHANNELS"))}`,
-        `💡  ${esc(toSmallCaps("SELECT A CHANNEL TO GET NS PLAYER LINK"))}`,
+        `📌  <b>${esc(toSmallCaps("COUNT"))}</b>  ⇢  <b>${list.length}</b>`,
+        `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
       ].join("\n\n");
 
-      await sendText(chatId, head, buildItemsKeyboard(list));
+      await sendText(chatId, head, buildSelectionKeyboard(list));
       return res.status(200).json({ ok: true });
     }
 
-    if (cmd === "/willow") {
-      const list = await loadAllItems("willow");
+    if (cmd === "/matches" || cmd === "/willow") {
+      const list = await loadAllEntries("events");
       if (!list.length) {
-        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO WILLOW MATCHES AVAILABLE"))}</b>`);
+        await sendText(chatId, `🛑  <b>${esc(toSmallCaps("NO MATCHES FOUND"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
@@ -554,49 +552,48 @@ export default async function handler(req, res) {
       const upcomingCount = list.filter((i) => i.status === "UPCOMING").length;
 
       const head = [
-        `🔺  <b>${esc(toSmallCaps("WILLOW CRICKET HUB (IST)"))}</b>`,
+        `🔺  <b>${esc(toSmallCaps("MATCH SCHEDULE (IST)"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
         `🔺  <b>${esc(toSmallCaps("LIVE"))}</b>  ⇢  <b>${liveCount}</b>    |    ⏳  <b>${esc(toSmallCaps("UPCOMING"))}</b>  ⇢  <b>${upcomingCount}</b>`,
-        `💡  ${esc(toSmallCaps("TAP ANY MATCH BELOW FOR NS PLAYER STREAMS"))}`,
+        `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
       ].join("\n\n");
 
-      await sendText(chatId, head, buildItemsKeyboard(list));
+      await sendText(chatId, head, buildSelectionKeyboard(list));
       return res.status(200).json({ ok: true });
     }
 
     const query = `${cmd.slice(1)} ${extra}`.trim().toLowerCase();
     const tokens = query.split(/\s+/).filter(Boolean);
-    const all = await loadAllItems("all");
+    const all = await loadAllEntries("all");
     const matched = all.filter((item) => tokens.every((t) => item.searchText.includes(t)));
 
     if (!matched.length) {
       await sendText(
         chatId,
         [
-          `🛑  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
+          `🛑  <b>${esc(toSmallCaps(`NO MATCH : ${query.toUpperCase()}`))}</b>`,
           `━━━━━━━━━━━━━━━━━━━━`,
-          `🫥  ${esc(toSmallCaps("TRY /sportlink OR /willow TO BROWSE ALL"))}`,
+          `🫥  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
     }
 
     if (matched.length === 1) {
-      await sendNsLinksMessage(chatId, matched[0]);
+      await sendStreamCard(chatId, matched[0]);
       return res.status(200).json({ ok: true });
     }
 
     const head = [
-      `📌  <b>${esc(toSmallCaps(`SEARCH : ${query.toUpperCase()}`))}</b>`,
+      `📌  <b>${esc(toSmallCaps(`RESULTS : ${query.toUpperCase()}`))}</b>`,
       `━━━━━━━━━━━━━━━━━━━━`,
-      `💡  <b>${esc(toSmallCaps("MATCHED"))}</b>  ⇢  <b>${matched.length}</b> ${esc(toSmallCaps("RESULTS"))}`,
-      `🤍  ${esc(toSmallCaps("TAP AN ITEM BELOW TO GET LINK"))}`,
+      `💡  <b>${esc(toSmallCaps("FOUND"))}</b>  ⇢  <b>${matched.length}</b>`,
+      `🤍  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
     ].join("\n\n");
 
-    await sendText(chatId, head, buildItemsKeyboard(matched));
+    await sendText(chatId, head, buildSelectionKeyboard(matched));
     return res.status(200).json({ ok: true });
   } catch (err) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
-
