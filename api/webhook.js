@@ -761,13 +761,20 @@ async function checkRequiredChannels(userId, bypassCache = false) {
 
 function getBotCommandsGuideText() {
   return [
-    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("COMMANDS"))}</b>`,
+    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("COMMANDS & GUIDE"))}</b>`,
     `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("Willow Cricket Matches"))}`,
     `${tgEmoji("fancode", "🔴")} ├ <code>/fancode</code> — ${esc(toSmallCaps("FanCode Live & Upcoming"))}`,
     `${tgEmoji("live", "📺")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Matches"))}`,
     `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("Sony TV Channels"))}`,
     `${tgEmoji("star", "⭐")} ├ <code>/star</code> — ${esc(toSmallCaps("Star Sports TV Channels"))}`,
-    `${tgEmoji("searching", "🔎")} └ <code>/keyword</code> — ${esc(toSmallCaps("Search Any Channel, Team or Event (Ex: /bein, /fubo, /india)"))}`,
+    `${tgEmoji("searching", "🔎")} ├ <code>/channel &amp; sport</code> — ${esc(toSmallCaps("Ex: /star sports 1 hindi hd, /bein, /fubo"))}`,
+    `${tgEmoji("cricket", "🏏")} └ <code>/team &amp; event</code> — ${esc(toSmallCaps("Search Any Match, Team or Tournament"))}`,
+    ``,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ``,
+    `${tgEmoji("bulb", "💡")} <b>${esc(toSmallCaps("HOW TO WATCH"))}</b>`,
+    `${esc(toSmallCaps("Tap any stream link to copy & open in NS Player or VLC."))}`,
+    `${esc(toSmallCaps("Sending a new stream card automatically removes the previous one."))}`,
   ].join("\n");
 }
 
@@ -799,7 +806,7 @@ function getWelcomeMessageText(firstName = "") {
 async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
   const targetList = missingChannels.length ? missingChannels : REQUIRED_CHANNELS;
   const listLines = targetList.map(
-    (ch) => `${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(ch.label))}</b>  ⇢  <code>${esc(ch.url)}</code>`
+    (ch) => `${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(ch.label))}</b>`
   );
 
   const text = [
@@ -807,7 +814,7 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ...listLines,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("JOIN ABOVE & TAP VERIFY"))}  ${tgEmoji("pointDown", "👇🏻")}`,
+    `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("JOIN USING BUTTONS BELOW & TAP VERIFY"))}  ${tgEmoji("pointDown", "👇🏻")}`,
   ].join("\n\n");
 
   const keyboardRows = targetList.map((ch) => [
@@ -909,6 +916,8 @@ async function sendStreamCard(chatId, item) {
       timeLine,
       `━━━━━━━━━━━━━━━━━━━━━━━━`,
       `${tgEmoji("wrong", "❌")} <b>${esc(toSmallCaps("NO ACTIVE STREAM RIGHT NOW"))}</b>`,
+      ``,
+      `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
     ].join("\n");
 
     const sentNoStream = await sendText(chatId, noStreamMsg);
@@ -930,6 +939,8 @@ async function sendStreamCard(chatId, item) {
     timeLine,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ...streamBlocks,
+    ``,
+    `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
   ].join("\n");
 
   const sent = await sendText(chatId, cardText);
