@@ -618,7 +618,6 @@ async function loadSonyLivFeed() {
 
 async function loadAllEntries(mode = "all") {
   if (mode === "willow") return loadEventsFeed();
-  if (mode === "tv") return loadPrimaryFeed();
   if (mode === "fancode") return loadFanCodeFeed();
   if (mode === "sonyliv") return loadSonyLivFeed();
   if (mode === "star") {
@@ -626,35 +625,8 @@ async function loadAllEntries(mode = "all") {
     return list.filter((i) => i.network === "star");
   }
   if (mode === "sony") {
-    const [p, sp] = await Promise.allSettled([
-      loadPrimaryFeed(),
-      loadSportsFeed(),
-    ]);
-    return [
-      ...(p.status === "fulfilled" ? p.value.filter((i) => i.network === "sony") : []),
-      ...(sp.status === "fulfilled"
-        ? sp.value.filter((i) => /\bsony\b/.test(i.searchText))
-        : []),
-    ];
-  }
-  if (mode === "cricket") {
-    const [e, fc, sl, sp] = await Promise.allSettled([
-      loadEventsFeed(),
-      loadFanCodeFeed(),
-      loadSonyLivFeed(),
-      loadSportsFeed(),
-    ]);
-    const events = e.status === "fulfilled" ? e.value : [];
-    const fancode = fc.status === "fulfilled"
-      ? fc.value.filter((i) => i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket"))
-      : [];
-    const sonyliv = sl.status === "fulfilled"
-      ? sl.value.filter((i) => i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket"))
-      : [];
-    const sports = sp.status === "fulfilled"
-      ? sp.value.filter((i) => i.searchText.includes("cricket"))
-      : [];
-    return [...events, ...fancode, ...sonyliv, ...sports];
+    const list = await loadPrimaryFeed();
+    return list.filter((i) => i.network === "sony");
   }
 
   const [p, e, fc, sl, sp] = await Promise.allSettled([
@@ -789,13 +761,13 @@ async function checkRequiredChannels(userId, bypassCache = false) {
 
 function getBotCommandsGuideText() {
   return [
-    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("HOW TO USE"))}</b>`,
-    `${tgEmoji("sony", "📺")} ├ <code>/channel name</code> — ${esc(toSmallCaps("Ex: /bein, /fubo, /star sports 1 hindi hd"))}`,
-    `${tgEmoji("cricket", "🏏")} ├ <code>/team or event</code> — ${esc(toSmallCaps("Ex: /india, /ipl, /premier league"))}`,
-    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("All Willow Cricket Matches"))}`,
-    `${tgEmoji("fancode", "🔴")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("All SonyLIV Live & Upcoming Matches"))}`,
-    `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("All Sony Network TV Channels"))}`,
-    `${tgEmoji("star", "⭐")} └ <code>/star</code> — ${esc(toSmallCaps("All Star Sports TV Channels"))}`,
+    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("COMMANDS"))}</b>`,
+    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("Willow Cricket Matches"))}`,
+    `${tgEmoji("fancode", "🔴")} ├ <code>/fancode</code> — ${esc(toSmallCaps("FanCode Live & Upcoming"))}`,
+    `${tgEmoji("live", "📺")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Matches"))}`,
+    `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("Sony TV Channels"))}`,
+    `${tgEmoji("star", "⭐")} ├ <code>/star</code> — ${esc(toSmallCaps("Star Sports TV Channels"))}`,
+    `${tgEmoji("searching", "🔎")} └ <code>/keyword</code> — ${esc(toSmallCaps("Search Any Channel, Team or Event (Ex: /bein, /fubo, /india)"))}`,
   ].join("\n");
 }
 
@@ -852,7 +824,7 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
 }
 
 function hasStatusFilter(scope, list) {
-  if (scope === "willow" || scope === "star" || scope === "tv" || scope === "sony") return false;
+  if (scope === "star" || scope === "sony") return false;
   return list.some((i) => i.source !== "sportlink");
 }
 
@@ -1042,7 +1014,6 @@ export default async function handler(req, res) {
         const kind = arg2;
         const val = arg3;
 
-        const all = await loadAllEntries("all");
         let baseList = [];
         let backData = "";
         let headerTitle = "MATCHES";
@@ -1051,30 +1022,26 @@ export default async function handler(req, res) {
         if (kind === "m") {
           backData = `menu:${val}`;
           if (val === "willow") {
-            baseList = all.filter((i) => i.network === "willow");
+            baseList = await loadAllEntries("willow");
             headerTitle = "WILLOW (IST)";
           } else if (val === "star") {
-            baseList = all.filter((i) => i.network === "star");
+            baseList = await loadAllEntries("star");
             headerTitle = "STAR";
           } else if (val === "sonyliv") {
-            baseList = all.filter((i) => i.source === "sonyliv");
+            baseList = await loadAllEntries("sonyliv");
             headerTitle = "SONYLIV";
           } else if (val === "sony") {
-            baseList = all.filter((i) => i.network === "sony" || /\bsony\b/.test(i.searchText));
+            baseList = await loadAllEntries("sony");
             headerTitle = "SONY TV";
-          } else if (val === "cricket") {
-            baseList = all.filter(
-              (i) => i.network === "willow" || i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket")
-            );
-            headerTitle = "CRICKET";
           } else if (val === "fancode") {
-            baseList = all.filter((i) => i.source === "fancode");
+            baseList = await loadAllEntries("fancode");
             headerTitle = "FANCODE";
           } else {
-            baseList = all;
+            baseList = await loadAllEntries("all");
             headerTitle = "ALL STREAMS";
           }
         } else if (kind === "q") {
+          const all = await loadAllEntries("all");
           backData = `menu:q:${val}`;
           pickSuffix = `q:${val}`;
           const bucket = getSearchBucket(val);
@@ -1125,8 +1092,8 @@ export default async function handler(req, res) {
           return res.status(200).json({ ok: true });
         }
 
-        const all = await loadAllEntries("all");
         if (arg1 === "q" && arg2) {
+          const all = await loadAllEntries("all");
           const bucket = getSearchBucket(arg2);
           const list = bucket.ids.map((id) => all.find((x) => x.id === id)).filter(Boolean);
           const showStatus = hasStatusFilter("all", list);
@@ -1149,22 +1116,7 @@ export default async function handler(req, res) {
         }
 
         const scope = arg1 || "all";
-        const list =
-          scope === "willow"
-            ? all.filter((i) => i.network === "willow")
-            : scope === "star"
-              ? all.filter((i) => i.network === "star")
-              : scope === "sonyliv"
-                ? all.filter((i) => i.source === "sonyliv")
-                : scope === "sony"
-                  ? all.filter((i) => i.network === "sony" || /\bsony\b/.test(i.searchText))
-                  : scope === "cricket"
-                    ? all.filter(
-                        (i) => i.network === "willow" || i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket")
-                      )
-                    : scope === "fancode"
-                      ? all.filter((i) => i.source === "fancode")
-                      : all;
+        const list = await loadAllEntries(scope);
 
         const meta =
           scope === "willow"
@@ -1172,14 +1124,12 @@ export default async function handler(req, res) {
             : scope === "star"
               ? { iconKey: "star", fallbackIcon: "⭐", title: "STAR" }
               : scope === "sonyliv"
-                ? { iconKey: "fancode", fallbackIcon: "🔴", title: "SONYLIV" }
+                ? { iconKey: "live", fallbackIcon: "📺", title: "SONYLIV" }
                 : scope === "sony"
                   ? { iconKey: "sony", fallbackIcon: "📺", title: "SONY TV" }
-                  : scope === "cricket"
-                    ? { iconKey: "cricket", fallbackIcon: "🏏", title: "CRICKET" }
-                    : scope === "fancode"
-                      ? { iconKey: "fancode", fallbackIcon: "🔴", title: "FANCODE" }
-                      : { iconKey: "searching", fallbackIcon: "🔎", title: "ALL STREAMS" };
+                  : scope === "fancode"
+                    ? { iconKey: "fancode", fallbackIcon: "🔴", title: "FANCODE" }
+                    : { iconKey: "searching", fallbackIcon: "🔎", title: "ALL STREAMS" };
 
         const showStatus = hasStatusFilter(scope, list);
         await answerCallback(cq.id, toSmallCaps("OPTIONS"));
@@ -1287,8 +1237,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    if (cmd === "/sonyliv" && !extra) {
-      const list = await loadAllEntries("sonyliv");
+    if (cmd === "/fancode" && !extra) {
+      const list = await loadAllEntries("fancode");
       if (!list.length) {
         await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
         return res.status(200).json({ ok: true });
@@ -1299,6 +1249,27 @@ export default async function handler(req, res) {
         buildCommandMenuHeader({
           iconKey: "fancode",
           fallbackIcon: "🔴",
+          title: "FANCODE",
+          list,
+          showStatusCounts: true,
+        }),
+        buildStatusFilterKeyboard("fancode", list)
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    if (cmd === "/sonyliv" && !extra) {
+      const list = await loadAllEntries("sonyliv");
+      if (!list.length) {
+        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        return res.status(200).json({ ok: true });
+      }
+
+      await sendText(
+        chatId,
+        buildCommandMenuHeader({
+          iconKey: "live",
+          fallbackIcon: "📺",
           title: "SONYLIV",
           list,
           showStatusCounts: true,
