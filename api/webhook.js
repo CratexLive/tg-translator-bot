@@ -768,6 +768,8 @@ async function checkRequiredChannels(userId, bypassCache = false) {
   return {
     allowed,
     missing: checks.filter((c) => !c.joined),
+    totalCount: checks.length,
+    joinedCount,
   };
 }
 
@@ -822,19 +824,36 @@ function getHelpMessageText() {
   ].join("\n");
 }
 
-async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
+async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null, isRetry = false) {
   const targetList = missingChannels.length ? missingChannels : REQUIRED_CHANNELS;
+  const pendingCount = targetList.length;
+
   const listLines = targetList.map(
-    (ch) => `${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(ch.label))}</b>`
+    (ch, idx) => `${tgEmoji("link", "🔗")}  <b>${idx + 1}. ${esc(toSmallCaps(ch.label))}</b>  ⇢  <i>${esc(toSmallCaps("NOT JOINED"))}</i>`
   );
 
+  const retryBanner = isRetry
+    ? [
+        `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("VERIFICATION FAILED"))}</b>`,
+        `${esc(toSmallCaps(`YOU STILL HAVE ${pendingCount} CHANNEL${pendingCount > 1 ? "S" : ""} LEFT TO JOIN.`))}`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━`,
+      ]
+    : [];
+
   const text = [
-    `${tgEmoji("alert", "⚠️")}  <b>${esc(toSmallCaps("ACCESS LOCKED"))}</b>`,
+    `${tgEmoji("alert", "⚠️")}  <b>${esc(toSmallCaps("ACCESS DENIED • MEMBERSHIP REQUIRED"))}</b>`,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ...retryBanner,
+    `${esc(toSmallCaps(`YOU HAVE TO JOIN ${pendingCount > 1 ? "THESE CHANNELS" : "THIS CHANNEL"} TO USE ${BOT_DISPLAY_NAME}.`))}`,
+    ``,
     ...listLines,
+    ``,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("JOIN USING BUTTONS BELOW & TAP VERIFY"))}  ${tgEmoji("pointDown", "👇🏻")}`,
-  ].join("\n\n");
+    `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("HOW TO UNLOCK"))}</b>`,
+    `1️⃣  ${esc(toSmallCaps("Tap every JOIN button below & join all listed channels."))}`,
+    `2️⃣  ${esc(toSmallCaps("Come back here and tap VERIFY JOINED."))}`,
+    `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("COMPLETE JOINING BELOW TO CONTINUE"))}`,
+  ].join("\n");
 
   const keyboardRows = targetList.map((ch) => [
     { text: `➔  ${toSmallCaps(`JOIN ${ch.label}`)}`, url: ch.url },
@@ -844,7 +863,11 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
   ]);
 
   if (callbackQueryId) {
-    await answerCallback(callbackQueryId, toSmallCaps("JOIN REQUIRED FIRST"), true);
+    await answerCallback(
+      callbackQueryId,
+      toSmallCaps(`YOU HAVE TO JOIN ALL REQUIRED CHANNELS FIRST (${pendingCount} LEFT)`),
+      true
+    );
   }
   await sendText(chatId, text, { inline_keyboard: keyboardRows });
 }
@@ -1018,14 +1041,14 @@ export default async function handler(req, res) {
       if (chatId && prefix === "chk" && arg1 === "join") {
         const sub = await checkRequiredChannels(userId, true);
         if (!sub.allowed) {
-          await sendJoinPrompt(chatId, sub.missing, cq.id);
+          await sendJoinPrompt(chatId, sub.missing, cq.id, true);
           return res.status(200).json({ ok: true });
         }
-        await answerCallback(cq.id, toSmallCaps("VERIFIED"), false);
+        await answerCallback(cq.id, toSmallCaps("VERIFIED • ACCESS UNLOCKED"), false);
         await sendText(
           chatId,
           [
-            `${tgEmoji("tick", "✅")}  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
+            `${tgEmoji("tick", "✅")}  <b>${esc(toSmallCaps("MEMBERSHIP VERIFIED"))}</b>`,
             `━━━━━━━━━━━━━━━━━━━━━━━━`,
             getWelcomeMessageText(cq?.from?.first_name || ""),
           ].join("\n\n")
@@ -1036,7 +1059,7 @@ export default async function handler(req, res) {
       if (chatId && prefix === "flt") {
         const sub = await checkRequiredChannels(userId);
         if (!sub.allowed) {
-          await sendJoinPrompt(chatId, sub.missing, cq.id);
+          await sendJoinPrompt(chatId, sub.missing, cq.id, false);
           return res.status(200).json({ ok: true });
         }
 
@@ -1118,7 +1141,7 @@ export default async function handler(req, res) {
       if (chatId && prefix === "menu") {
         const sub = await checkRequiredChannels(userId);
         if (!sub.allowed) {
-          await sendJoinPrompt(chatId, sub.missing, cq.id);
+          await sendJoinPrompt(chatId, sub.missing, cq.id, false);
           return res.status(200).json({ ok: true });
         }
 
@@ -1175,7 +1198,7 @@ export default async function handler(req, res) {
       if (chatId && prefix === "pick") {
         const sub = await checkRequiredChannels(userId);
         if (!sub.allowed) {
-          await sendJoinPrompt(chatId, sub.missing, cq.id);
+          await sendJoinPrompt(chatId, sub.missing, cq.id, false);
           return res.status(200).json({ ok: true });
         }
 
@@ -1225,7 +1248,7 @@ export default async function handler(req, res) {
 
     const sub = await checkRequiredChannels(userId);
     if (!sub.allowed) {
-      await sendJoinPrompt(chatId, sub.missing);
+      await sendJoinPrompt(chatId, sub.missing, null, false);
       return res.status(200).json({ ok: true });
     }
 
