@@ -1,4 +1,4 @@
-Import crypto from "node:crypto";
+import crypto from "node:crypto";
 
 const FEED_PRIMARY_URL = "https://sportlink-tv11.pages.dev/Data.json";
 const FEED_EVENTS_URL =
@@ -787,4 +787,3 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
-
