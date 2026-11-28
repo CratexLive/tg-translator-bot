@@ -21,12 +21,12 @@ const REQUIRED_CHANNELS = [
 
 const REQUIRE_ALL_CHANNELS = true;
 
-// Yahan apni custom_emoji_id strings daal dena (message text ke liye)
 const CUSTOM_EMOJI_MAP = {
-  live: "",
+  live: "5264919878082509254",
   upcoming: "",
   ended: "",
-  alert: "",
+  alert: "6257780484281997093",
+  link: "6275878213746955453",
   info: "",
   tip: "",
   time: "",
@@ -488,7 +488,7 @@ async function checkRequiredChannels(userId, bypassCache = false) {
 async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
   const targetList = missingChannels.length ? missingChannels : REQUIRED_CHANNELS;
   const listLines = targetList.map(
-    (ch) => `${tgEmoji("info", "📌")}  <b>${esc(toSmallCaps(ch.label))}</b>  ⇢  <code>${esc(ch.url)}</code>`
+    (ch) => `${tgEmoji("link", "📌")}  <b>${esc(toSmallCaps(ch.label))}</b>  ⇢  <code>${esc(ch.url)}</code>`
   );
 
   const text = [
@@ -543,7 +543,7 @@ async function sendStreamCard(chatId, item) {
   lines.push(`${tgEmoji("tip", "💡")}  <b>${esc(toSmallCaps("TAP TO COPY FOR PLAYER"))}</b>`);
 
   for (const s of item.streams) {
-    lines.push(`${tgEmoji("brand", "🥂")}  <b>${esc(toSmallCaps(s.label))}</b>\n<code>${esc(s.line)}</code>`);
+    lines.push(`${tgEmoji("link", "🥂")}  <b>${esc(toSmallCaps(s.label))}</b>\n<code>${esc(s.line)}</code>`);
   }
 
   await sendText(chatId, lines.join("\n\n"));
@@ -638,7 +638,7 @@ export default async function handler(req, res) {
           const lines = found.map((x) => `${esc(x.char)}  ⇢  <code>${esc(x.id)}</code>`);
           await sendText(
             chatId,
-            `${tgEmoji("info", "📌")}  <b>${esc(toSmallCaps("CUSTOM EMOJI IDS"))}</b>\n\n${lines.join("\n")}`
+            `${tgEmoji("link", "📌")}  <b>${esc(toSmallCaps("CUSTOM EMOJI IDS"))}</b>\n\n${lines.join("\n")}`
           );
         }
       }
@@ -674,7 +674,7 @@ export default async function handler(req, res) {
     if (cmd === "/willow" && !extra) {
       const list = await loadAllEntries("willow");
       if (!list.length) {
-        await sendText(chatId, `${tgEmoji("empty", "🛑")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        await sendText(chatId, `${tgEmoji("alert", "🛑")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
@@ -695,7 +695,7 @@ export default async function handler(req, res) {
     if (cmd === "/star" && !extra) {
       const list = await loadAllEntries("star");
       if (!list.length) {
-        await sendText(chatId, `${tgEmoji("empty", "🛑")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        await sendText(chatId, `${tgEmoji("alert", "🛑")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
@@ -713,7 +713,7 @@ export default async function handler(req, res) {
     if (cmd === "/sony" && !extra) {
       const list = await loadAllEntries("sony");
       if (!list.length) {
-        await sendText(chatId, `${tgEmoji("empty", "🛑")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        await sendText(chatId, `${tgEmoji("alert", "🛑")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
@@ -737,7 +737,7 @@ export default async function handler(req, res) {
       await sendText(
         chatId,
         [
-          `${tgEmoji("empty", "🛑")}  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
+          `${tgEmoji("alert", "🛑")}  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
           `━━━━━━━━━━━━━━━━━━━━`,
           `${tgEmoji("empty", "🫥")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
         ].join("\n\n")
