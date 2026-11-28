@@ -673,15 +673,37 @@ async function loadAllEntries(mode = "all") {
   ];
 }
 
-function storeSearchBucket(items) {
+function filterItemStreamsForQuery(item, tokens = []) {
+  if (!item || item.source !== "sports" || !Array.isArray(item.streams) || !item.streams.length) {
+    return item;
+  }
+  const cleanTokens = tokens.map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+  if (!cleanTokens.length) return item;
+
+  const matchedStreams = item.streams.filter((s) => {
+    const label = String(s?.label || "").toLowerCase();
+    return cleanTokens.some((tok) => label.includes(tok));
+  });
+
+  if (!matchedStreams.length) return item;
+  return {
+    ...item,
+    streams: matchedStreams,
+  };
+}
+
+function storeSearchBucket(items, query = "") {
   const ids = items.map((i) => i.id);
-  const bucketId = makeId(`b|${Date.now()}|${ids.slice(0, 8).join(",")}`);
-  setCached(`bucket:${bucketId}`, ids, 15 * 60 * 1000);
+  const bucketId = makeId(`b|${Date.now()}|${query}|${ids.slice(0, 8).join(",")}`);
+  setCached(`bucket:${bucketId}`, { ids, query }, 15 * 60 * 1000);
   return bucketId;
 }
 
 function getSearchBucket(bucketId) {
-  return getCached(`bucket:${bucketId}`) || [];
+  const entry = getCached(`bucket:${bucketId}`);
+  if (!entry) return { ids: [], query: "" };
+  if (Array.isArray(entry)) return { ids: entry, query: "" };
+  return { ids: entry.ids || [], query: entry.query || "" };
 }
 
 async function telegramApi(method, payload) {
@@ -767,18 +789,13 @@ async function checkRequiredChannels(userId, bypassCache = false) {
 
 function getBotCommandsGuideText() {
   return [
-    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("BOT COMMANDS"))}</b>`,
-    `${tgEmoji("sony", "📺")} ├ <code>/&lt;channelname&gt;</code> / <code>/&lt;sport&gt;</code> — ${esc(toSmallCaps("Ex: /star sports 1 hindi hd"))}`,
-    `${tgEmoji("cricket", "🏏")} ├ <code>/&lt;team name&gt;</code> / <code>/&lt;event&gt;</code> — ${esc(toSmallCaps("Search Team or Event Streams"))}`,
-    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("Willow Cricket All Matches"))}`,
+    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("COMMANDS"))}</b>`,
+    `${tgEmoji("sony", "📺")} ├ <code>/&lt;channel&gt;</code> — ${esc(toSmallCaps("Ex: /bein, /fubo, /star sports 1 hindi hd"))}`,
+    `${tgEmoji("cricket", "🏏")} ├ <code>/&lt;team or event&gt;</code> — ${esc(toSmallCaps("Search match or tournament"))}`,
+    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("Willow Cricket"))}`,
     `${tgEmoji("fancode", "🔴")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Matches"))}`,
-    `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("Sony Network TV Channel"))}`,
-    `${tgEmoji("star", "⭐")} └ <code>/star</code> — ${esc(toSmallCaps("Star Sports Channel"))}`,
-    ``,
-    `━━━━━━━━━━━━━━━━━━━━━━━━`,
-    ``,
-    `${tgEmoji("bulb", "💡")} <b>${esc(toSmallCaps("CLEAN STREAM VIEW"))}</b>`,
-    `${esc(toSmallCaps("Sending a new stream card automatically deletes the previous stream card in chat."))}`,
+    `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("Sony TV Channels"))}`,
+    `${tgEmoji("star", "⭐")} └ <code>/star</code> — ${esc(toSmallCaps("Star Sports Channels"))}`,
   ].join("\n");
 }
 
@@ -786,7 +803,7 @@ function getWelcomeMessageText(firstName = "") {
   const greetingName = String(firstName || "").trim();
   const headerLine = greetingName
     ? `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps(`WELCOME ${greetingName.toUpperCase()} • CRICXCRATE`))}</b> ${tgEmoji("free", "🆓")}`
-    : `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps("WELCOME TO CRICXCRATE STREAM BOT"))}</b> ${tgEmoji("free", "🆓")}`;
+    : `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps("WELCOME TO CRICXCRATE"))}</b> ${tgEmoji("free", "🆓")}`;
 
   const channelIconsRow = [
     `${tgEmoji("cricket", "🏏")} ${esc(toSmallCaps("CRICKET"))}`,
@@ -872,12 +889,13 @@ function buildStatusFilterKeyboard(scope, items, bucketId = "") {
   };
 }
 
-function buildSelectionKeyboard(items, backData = "") {
+function buildSelectionKeyboard(items, backData = "", pickSuffix = "") {
   const rows = [];
   for (const item of items.slice(0, 45)) {
     const mark = getStatusButtonMark(item);
     const text = `${mark}  ${toSmallCaps(item.title)}`.slice(0, 60);
-    rows.push([{ text, callback_data: `pick:${item.id}` }]);
+    const cbData = pickSuffix ? `pick:${item.id}:${pickSuffix}` : `pick:${item.id}`;
+    rows.push([{ text, callback_data: cbData }]);
   }
   if (backData) {
     rows.push([{ text: `↩  ${toSmallCaps("BACK TO OPTIONS")}`, callback_data: backData }]);
@@ -919,7 +937,6 @@ async function sendStreamCard(chatId, item) {
       timeLine,
       `━━━━━━━━━━━━━━━━━━━━━━━━`,
       `${tgEmoji("wrong", "❌")} <b>${esc(toSmallCaps("NO ACTIVE STREAM RIGHT NOW"))}</b>`,
-      `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
     ].join("\n");
 
     const sentNoStream = await sendText(chatId, noStreamMsg);
@@ -941,8 +958,6 @@ async function sendStreamCard(chatId, item) {
     timeLine,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ...streamBlocks,
-    ``,
-    `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
   ].join("\n");
 
   const sent = await sendText(chatId, cardText);
@@ -1031,6 +1046,7 @@ export default async function handler(req, res) {
         let baseList = [];
         let backData = "";
         let headerTitle = "MATCHES";
+        let pickSuffix = "";
 
         if (kind === "m") {
           backData = `menu:${val}`;
@@ -1060,8 +1076,9 @@ export default async function handler(req, res) {
           }
         } else if (kind === "q") {
           backData = `menu:q:${val}`;
-          const ids = getSearchBucket(val);
-          baseList = ids.map((id) => all.find((x) => x.id === id)).filter(Boolean);
+          pickSuffix = `q:${val}`;
+          const bucket = getSearchBucket(val);
+          baseList = bucket.ids.map((id) => all.find((x) => x.id === id)).filter(Boolean);
           headerTitle = "SEARCH RESULTS";
         }
 
@@ -1097,7 +1114,7 @@ export default async function handler(req, res) {
           `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP A MATCH BELOW"))}`,
         ].join("\n\n");
 
-        await editMessage(chatId, messageId, text, buildSelectionKeyboard(filtered, backData));
+        await editMessage(chatId, messageId, text, buildSelectionKeyboard(filtered, backData, pickSuffix));
         return res.status(200).json({ ok: true });
       }
 
@@ -1110,8 +1127,8 @@ export default async function handler(req, res) {
 
         const all = await loadAllEntries("all");
         if (arg1 === "q" && arg2) {
-          const ids = getSearchBucket(arg2);
-          const list = ids.map((id) => all.find((x) => x.id === id)).filter(Boolean);
+          const bucket = getSearchBucket(arg2);
+          const list = bucket.ids.map((id) => all.find((x) => x.id === id)).filter(Boolean);
           const showStatus = hasStatusFilter("all", list);
           await answerCallback(cq.id, toSmallCaps("OPTIONS"));
           await editMessage(
@@ -1124,7 +1141,9 @@ export default async function handler(req, res) {
               list,
               showStatusCounts: showStatus,
             }),
-            showStatus ? buildStatusFilterKeyboard("all", list, arg2) : buildSelectionKeyboard(list)
+            showStatus
+              ? buildStatusFilterKeyboard("all", list, arg2)
+              : buildSelectionKeyboard(list, "", `q:${arg2}`)
           );
           return res.status(200).json({ ok: true });
         }
@@ -1181,10 +1200,16 @@ export default async function handler(req, res) {
         }
 
         const all = await loadAllEntries("all");
-        const selected = all.find((c) => c.id === arg1);
+        let selected = all.find((c) => c.id === arg1);
         if (!selected) {
           await answerCallback(cq.id, toSmallCaps("UNAVAILABLE"), true);
           return res.status(200).json({ ok: true });
+        }
+
+        if (arg2 === "q" && arg3) {
+          const bucket = getSearchBucket(arg3);
+          const qTokens = String(bucket.query || "").split(/\s+/).filter(Boolean);
+          selected = filterItemStreamsForQuery(selected, qTokens);
         }
 
         await answerCallback(cq.id, toSmallCaps(selected.title));
@@ -1233,7 +1258,7 @@ export default async function handler(req, res) {
       await sendText(
         chatId,
         [
-          `${tgEmoji("help", "ℹ️")} <b>${esc(toSmallCaps("BOT GUIDE & COMMANDS"))}</b>`,
+          `${tgEmoji("help", "ℹ️")} <b>${esc(toSmallCaps("BOT GUIDE"))}</b>`,
           `━━━━━━━━━━━━━━━━━━━━━━━━`,
           getBotCommandsGuideText(),
         ].join("\n\n")
@@ -1343,12 +1368,13 @@ export default async function handler(req, res) {
     }
 
     if (matched.length === 1) {
-      await sendStreamCard(chatId, matched[0]);
+      const singleItem = filterItemStreamsForQuery(matched[0], tokens);
+      await sendStreamCard(chatId, singleItem);
       return res.status(200).json({ ok: true });
     }
 
     const showStatus = hasStatusFilter("all", matched);
-    const bucketId = showStatus ? storeSearchBucket(matched) : "";
+    const bucketId = storeSearchBucket(matched, query);
     await sendText(
       chatId,
       buildCommandMenuHeader({
@@ -1358,7 +1384,9 @@ export default async function handler(req, res) {
         list: matched,
         showStatusCounts: showStatus,
       }),
-      showStatus ? buildStatusFilterKeyboard("all", matched, bucketId) : buildSelectionKeyboard(matched)
+      showStatus
+        ? buildStatusFilterKeyboard("all", matched, bucketId)
+        : buildSelectionKeyboard(matched, "", `q:${bucketId}`)
     );
     return res.status(200).json({ ok: true });
   } catch (err) {
