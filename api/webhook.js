@@ -626,16 +626,14 @@ async function loadAllEntries(mode = "all") {
     return list.filter((i) => i.network === "star");
   }
   if (mode === "sony") {
-    const [p, sl, sp] = await Promise.allSettled([
+    const [p, sp] = await Promise.allSettled([
       loadPrimaryFeed(),
-      loadSonyLivFeed(),
       loadSportsFeed(),
     ]);
     return [
       ...(p.status === "fulfilled" ? p.value.filter((i) => i.network === "sony") : []),
-      ...(sl.status === "fulfilled" ? sl.value : []),
       ...(sp.status === "fulfilled"
-        ? sp.value.filter((i) => i.searchText.includes("sony"))
+        ? sp.value.filter((i) => /\bsony\b/.test(i.searchText))
         : []),
     ];
   }
@@ -770,12 +768,12 @@ async function checkRequiredChannels(userId, bypassCache = false) {
 function getBotCommandsGuideText() {
   return [
     `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("BOT COMMANDS"))}</b>`,
-    `${tgEmoji("cricket", "🏏")} ├ <code>/cricket</code> — ${esc(toSmallCaps("Live Cricket Matches & Multiple Stream Feeds"))}`,
-    `${tgEmoji("sony", "📺")} ├ <code>/tv &lt;name&gt;</code> — ${esc(toSmallCaps("Search & Access Live TV Channels"))}`,
-    `${tgEmoji("fancode", "🔴")} ├ <code>/fancode</code> — ${esc(toSmallCaps("FanCode Premium Sports Streams"))}`,
-    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("Ad-Free Willow Cricket Streams"))}`,
-    `${tgEmoji("star", "⭐")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Sports Broadcasts"))}`,
-    `${tgEmoji("help", "ℹ️")} └ <code>/help</code> — ${esc(toSmallCaps("Complete Bot Guide & Instructions"))}`,
+    `${tgEmoji("sony", "📺")} ├ <code>/&lt;channelname&gt;</code> / <code>/&lt;sport&gt;</code> — ${esc(toSmallCaps("Ex: /star sports 1 hindi hd"))}`,
+    `${tgEmoji("cricket", "🏏")} ├ <code>/&lt;team name&gt;</code> / <code>/&lt;event&gt;</code> — ${esc(toSmallCaps("Search Team or Event Streams"))}`,
+    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("Willow Cricket All Matches"))}`,
+    `${tgEmoji("fancode", "🔴")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Matches"))}`,
+    `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("Sony Network TV Channel"))}`,
+    `${tgEmoji("star", "⭐")} └ <code>/star</code> — ${esc(toSmallCaps("Star Sports Channel"))}`,
     ``,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ``,
@@ -837,7 +835,7 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
 }
 
 function hasStatusFilter(scope, list) {
-  if (scope === "willow" || scope === "star" || scope === "tv") return false;
+  if (scope === "willow" || scope === "star" || scope === "tv" || scope === "sony") return false;
   return list.some((i) => i.source !== "sportlink");
 }
 
@@ -1042,9 +1040,12 @@ export default async function handler(req, res) {
           } else if (val === "star") {
             baseList = all.filter((i) => i.network === "star");
             headerTitle = "STAR";
-          } else if (val === "sony" || val === "sonyliv") {
-            baseList = all.filter((i) => i.network === "sony" || i.searchText.includes("sony"));
+          } else if (val === "sonyliv") {
+            baseList = all.filter((i) => i.source === "sonyliv");
             headerTitle = "SONYLIV";
+          } else if (val === "sony") {
+            baseList = all.filter((i) => i.network === "sony" || /\bsony\b/.test(i.searchText));
+            headerTitle = "SONY TV";
           } else if (val === "cricket") {
             baseList = all.filter(
               (i) => i.network === "willow" || i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket")
@@ -1134,28 +1135,32 @@ export default async function handler(req, res) {
             ? all.filter((i) => i.network === "willow")
             : scope === "star"
               ? all.filter((i) => i.network === "star")
-              : scope === "sony" || scope === "sonyliv"
-                ? all.filter((i) => i.network === "sony" || i.searchText.includes("sony"))
-                : scope === "cricket"
-                  ? all.filter(
-                      (i) => i.network === "willow" || i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket")
-                    )
-                  : scope === "fancode"
-                    ? all.filter((i) => i.source === "fancode")
-                    : all;
+              : scope === "sonyliv"
+                ? all.filter((i) => i.source === "sonyliv")
+                : scope === "sony"
+                  ? all.filter((i) => i.network === "sony" || /\bsony\b/.test(i.searchText))
+                  : scope === "cricket"
+                    ? all.filter(
+                        (i) => i.network === "willow" || i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket")
+                      )
+                    : scope === "fancode"
+                      ? all.filter((i) => i.source === "fancode")
+                      : all;
 
         const meta =
           scope === "willow"
             ? { iconKey: "willow", fallbackIcon: "🌐", title: "WILLOW (IST)" }
             : scope === "star"
               ? { iconKey: "star", fallbackIcon: "⭐", title: "STAR" }
-              : scope === "sony" || scope === "sonyliv"
-                ? { iconKey: "sony", fallbackIcon: "📺", title: "SONYLIV" }
-                : scope === "cricket"
-                  ? { iconKey: "cricket", fallbackIcon: "🏏", title: "CRICKET" }
-                  : scope === "fancode"
-                    ? { iconKey: "fancode", fallbackIcon: "🔴", title: "FANCODE" }
-                    : { iconKey: "searching", fallbackIcon: "🔎", title: "ALL STREAMS" };
+              : scope === "sonyliv"
+                ? { iconKey: "fancode", fallbackIcon: "🔴", title: "SONYLIV" }
+                : scope === "sony"
+                  ? { iconKey: "sony", fallbackIcon: "📺", title: "SONY TV" }
+                  : scope === "cricket"
+                    ? { iconKey: "cricket", fallbackIcon: "🏏", title: "CRICKET" }
+                    : scope === "fancode"
+                      ? { iconKey: "fancode", fallbackIcon: "🔴", title: "FANCODE" }
+                      : { iconKey: "searching", fallbackIcon: "🔎", title: "ALL STREAMS" };
 
         const showStatus = hasStatusFilter(scope, list);
         await answerCallback(cq.id, toSmallCaps("OPTIONS"));
@@ -1236,86 +1241,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    if (cmd === "/cricket" && !extra) {
-      const list = await loadAllEntries("cricket");
-      if (!list.length) {
-        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
-        return res.status(200).json({ ok: true });
-      }
-
-      await sendText(
-        chatId,
-        buildCommandMenuHeader({
-          iconKey: "cricket",
-          fallbackIcon: "🏏",
-          title: "CRICKET",
-          list,
-          showStatusCounts: true,
-        }),
-        buildStatusFilterKeyboard("cricket", list)
-      );
-      return res.status(200).json({ ok: true });
-    }
-
-    if (cmd === "/fancode" && !extra) {
-      const list = await loadAllEntries("fancode");
-      if (!list.length) {
-        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
-        return res.status(200).json({ ok: true });
-      }
-
-      await sendText(
-        chatId,
-        buildCommandMenuHeader({
-          iconKey: "fancode",
-          fallbackIcon: "🔴",
-          title: "FANCODE",
-          list,
-          showStatusCounts: true,
-        }),
-        buildStatusFilterKeyboard("fancode", list)
-      );
-      return res.status(200).json({ ok: true });
-    }
-
-    if (cmd === "/tv") {
-      const allTv = await loadAllEntries("tv");
-      const q = extra.toLowerCase();
-      const matchedTv = q
-        ? allTv.filter((item) => q.split(/\s+/).every((t) => item.searchText.includes(t)))
-        : allTv;
-
-      if (!matchedTv.length) {
-        await sendText(
-          chatId,
-          [
-            `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps(`NO TV CHANNELS : ${extra.toUpperCase()}`))}</b>`,
-            `━━━━━━━━━━━━━━━━━━━━━━━━`,
-            `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY /tv OR ANOTHER CHANNEL NAME"))}`,
-          ].join("\n\n")
-        );
-        return res.status(200).json({ ok: true });
-      }
-
-      if (matchedTv.length === 1) {
-        await sendStreamCard(chatId, matchedTv[0]);
-        return res.status(200).json({ ok: true });
-      }
-
-      await sendText(
-        chatId,
-        buildCommandMenuHeader({
-          iconKey: "sony",
-          fallbackIcon: "📺",
-          title: q ? `TV : ${extra.toUpperCase()}` : "LIVE TV CHANNELS",
-          list: matchedTv,
-          showStatusCounts: false,
-        }),
-        buildSelectionKeyboard(matchedTv)
-      );
-      return res.status(200).json({ ok: true });
-    }
-
     if (cmd === "/willow" && !extra) {
       const list = await loadAllEntries("willow");
       if (!list.length) {
@@ -1333,6 +1258,48 @@ export default async function handler(req, res) {
           showStatusCounts: true,
         }),
         buildStatusFilterKeyboard("willow", list)
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    if (cmd === "/sonyliv" && !extra) {
+      const list = await loadAllEntries("sonyliv");
+      if (!list.length) {
+        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        return res.status(200).json({ ok: true });
+      }
+
+      await sendText(
+        chatId,
+        buildCommandMenuHeader({
+          iconKey: "fancode",
+          fallbackIcon: "🔴",
+          title: "SONYLIV",
+          list,
+          showStatusCounts: true,
+        }),
+        buildStatusFilterKeyboard("sonyliv", list)
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    if (cmd === "/sony" && !extra) {
+      const list = await loadAllEntries("sony");
+      if (!list.length) {
+        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        return res.status(200).json({ ok: true });
+      }
+
+      await sendText(
+        chatId,
+        buildCommandMenuHeader({
+          iconKey: "sony",
+          fallbackIcon: "📺",
+          title: "SONY TV",
+          list,
+          showStatusCounts: false,
+        }),
+        buildSelectionKeyboard(list)
       );
       return res.status(200).json({ ok: true });
     }
@@ -1358,28 +1325,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    if ((cmd === "/sony" || cmd === "/sonyliv") && !extra) {
-      const list = await loadAllEntries("sony");
-      if (!list.length) {
-        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
-        return res.status(200).json({ ok: true });
-      }
-
-      const showStatus = hasStatusFilter("sony", list);
-      await sendText(
-        chatId,
-        buildCommandMenuHeader({
-          iconKey: "sony",
-          fallbackIcon: "📺",
-          title: "SONYLIV",
-          list,
-          showStatusCounts: showStatus,
-        }),
-        showStatus ? buildStatusFilterKeyboard("sony", list) : buildSelectionKeyboard(list)
-      );
-      return res.status(200).json({ ok: true });
-    }
-
     const query = `${cmd.slice(1)} ${extra}`.trim().toLowerCase();
     const tokens = query.split(/\s+/).filter(Boolean);
     const all = await loadAllEntries("all");
@@ -1391,7 +1336,7 @@ export default async function handler(req, res) {
         [
           `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
           `━━━━━━━━━━━━━━━━━━━━━━━━`,
-          `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /help"))}`,
+          `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
