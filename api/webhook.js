@@ -138,15 +138,29 @@ function getTeamEmoji(title = "") {
   return "";
 }
 
+function getSportEmoji(title = "", category = "", network = "") {
+  const combined = `${title} ${category} ${network}`.toLowerCase();
+  if (/\b(football|soccer|premier league|la liga|serie a|bundesliga|ligue 1|champions league|uefa|fifa|isl)\b/.test(combined)) {
+    return tgEmoji("football", "⚽");
+  }
+  if (/\b(cricket|ipl|t20|odi|test|willow|bpl|psl|bbl|sa20|icc|ashes)\b/.test(combined)) {
+    return tgEmoji("cricket", "🏏");
+  }
+  return "";
+}
+
 function getStatusEmoji(item) {
   const teamMark = getTeamEmoji(item?.title || "");
+  const sportMark = getSportEmoji(item?.title || "", item?.category || "", item?.network || "");
+  const extras = [teamMark, sportMark].filter(Boolean).join(" ");
+
   if (item?.source === "sportlink") {
-    return teamMark ? `${tgEmoji("live", "🔺")} ${teamMark}` : tgEmoji("live", "🔺");
+    return `${tgEmoji("live", "🔺")}${extras ? ` ${extras}` : ""}`;
   }
   const norm = normalizeStatus(item?.status);
-  if (norm === "LIVE") return `${tgEmoji("live", "🔺")}${teamMark ? ` ${teamMark}` : ""}`;
-  if (norm === "UPCOMING") return `${tgEmoji("upcoming", "⏳")}${teamMark ? ` ${teamMark}` : ""}`;
-  return `${tgEmoji("ended", "🔻")}${teamMark ? ` ${teamMark}` : ""}`;
+  if (norm === "LIVE") return `${tgEmoji("live", "🔺")}${extras ? ` ${extras}` : ""}`;
+  if (norm === "UPCOMING") return `${tgEmoji("upcoming", "⏳")}${extras ? ` ${extras}` : ""}`;
+  return `${tgEmoji("ended", "🔻")}${extras ? ` ${extras}` : ""}`;
 }
 
 function getStatusButtonMark(item) {
@@ -357,6 +371,8 @@ async function loadPrimaryFeed() {
       network,
       title,
       status: "CHANNEL",
+      category: "",
+      tournament: "",
       timingLabel: "VALID TILL",
       timingValue: entry?.cookie_expire_ist || "ACTIVE",
       streams: [{ label: "DIRECT STREAM", line }],
@@ -390,6 +406,8 @@ async function loadEventsFeed() {
       network: "willow",
       title,
       status,
+      category: "Cricket",
+      tournament: String(m?.synopsis || "").trim(),
       timingLabel: "SCHEDULE (IST)",
       timingValue: istTime,
       streams,
@@ -427,6 +445,8 @@ async function loadSportsFeed() {
       network: "sports",
       title,
       status,
+      category,
+      tournament,
       timingLabel: "START TIME",
       timingValue: startTime || "TBA",
       streams,
@@ -642,26 +662,16 @@ function buildCommandMenuHeader({ iconKey, fallbackIcon, title, list, showStatus
   ].join("\n\n");
 }
 
-function buildStreamActionKeyboard(item) {
-  const streams = Array.isArray(item?.streams) ? item.streams : [];
-  if (!streams.length) return null;
-
-  const rows = streams.map((s, idx) => [
-    {
-      text: `📋  ${toSmallCaps(`COPY • ${s.label}`)}`.slice(0, 60),
-      callback_data: `cpy:${item.id}:${idx}`,
-    },
-  ]);
-
-  return { inline_keyboard: rows };
-}
-
 async function sendStreamCard(chatId, item) {
   const mark = getStatusEmoji(item);
   const lines = [
     `${mark}  <b>${esc(toSmallCaps(item.title))}</b>`,
     `━━━━━━━━━━━━━━━━━━━━`,
   ];
+
+  if (item.tournament) {
+    lines.push(`${tgEmoji("eyes", "👀")}  <b>${esc(toSmallCaps("EVENT"))}</b>  ⇢  <b>${esc(toSmallCaps(item.tournament))}</b>`);
+  }
 
   if (item.source !== "sportlink") {
     lines.push(`${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("STATE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.status))}</b>`);
@@ -678,26 +688,13 @@ async function sendStreamCard(chatId, item) {
   }
 
   lines.push(`━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`${tgEmoji("bulb", "💡")}  <b>${esc(toSmallCaps("TAP LINK BELOW TO COPY"))}</b>`);
+
   for (const s of item.streams) {
-    lines.push(`${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(s.label))}</b>`);
+    lines.push(`${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(s.label))}</b>\n<code>${esc(s.line)}</code>`);
   }
-  lines.push(`${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP BUTTON BELOW TO GET STREAM LINK"))}`);
 
-  await sendText(chatId, lines.join("\n\n"), buildStreamActionKeyboard(item));
-}
-
-async function sendSingleStreamLink(chatId, item, streamIndex) {
-  const s = item?.streams?.[streamIndex];
-  if (!s) return false;
-
-  const text = [
-    `${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(`${item.title} • ${s.label}`))}</b>`,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    `<code>${esc(s.line)}</code>`,
-  ].join("\n\n");
-
-  await sendText(chatId, text);
-  return true;
+  await sendText(chatId, lines.join("\n\n"));
 }
 
 async function sendText(chatId, text, replyMarkup = null) {
@@ -921,27 +918,6 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      if (chatId && prefix === "cpy") {
-        const sub = await checkRequiredChannels(userId);
-        if (!sub.allowed) {
-          await sendJoinPrompt(chatId, sub.missing, cq.id);
-          return res.status(200).json({ ok: true });
-        }
-
-        const all = await loadAllEntries("all");
-        const selected = all.find((c) => c.id === arg1);
-        const idx = parseInt(arg2 || "0", 10);
-        const ok = selected ? await sendSingleStreamLink(chatId, selected, idx) : false;
-
-        if (!ok) {
-          await answerCallback(cq.id, toSmallCaps("STREAM EXPIRED"), true);
-          return res.status(200).json({ ok: true });
-        }
-
-        await answerCallback(cq.id, toSmallCaps("LINK SENT"));
-        return res.status(200).json({ ok: true });
-      }
-
       return res.status(200).json({ ok: true });
     }
 
@@ -1094,3 +1070,4 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
+
