@@ -622,7 +622,15 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   try {
-    const update = req.body || {};
+    let body = req.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        body = {};
+      }
+    }
+    const update = body && typeof body === "object" ? body : {};
 
     if (update.callback_query) {
       const cq = update.callback_query;
@@ -808,6 +816,7 @@ export default async function handler(req, res) {
     await sendText(chatId, head, buildSelectionKeyboard(matched));
     return res.status(200).json({ ok: true });
   } catch (err) {
+    console.error("BOT_HANDLER_ERROR:", err);
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
