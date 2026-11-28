@@ -7,6 +7,8 @@ const FEED_SPORTS_URL =
   "https://raw.githubusercontent.com/sm-monirulislam/Upcoming-and-Live-Sports-Data/main/Sports_data.json";
 const FEED_FANCODE_URL =
   "https://raw.githubusercontent.com/kajju027/Fancode-Events-Json/refs/heads/main/fancode.json";
+const FEED_SONYLIV_URL =
+  "https://raw.githubusercontent.com/drmlive/sliv-live-events/refs/heads/main/sonyliv.json";
 
 const REQUIRED_CHANNELS = [
   {
@@ -368,6 +370,26 @@ function extractFanCodeStreams(match) {
   return streams;
 }
 
+function extractSonyLivStreams(match) {
+  const streams = [];
+  const seen = new Set();
+  const lang = String(match?.audioLanguageName || "ENG").trim().toUpperCase();
+  const channel = String(match?.broadcast_channel || "SONYLIV").trim().toUpperCase();
+
+  const pushUnique = (label, url) => {
+    const clean = String(url || "").trim();
+    if (!clean || seen.has(clean)) return;
+    seen.add(clean);
+    streams.push({ label, line: clean });
+  };
+
+  if (match?.video_url) pushUnique(`${channel} • ${lang}`, match.video_url);
+  if (match?.dai_url) pushUnique(`${channel} • DAI (${lang})`, match.dai_url);
+  if (match?.pub_url) pushUnique(`${channel} • PUB (${lang})`, match.pub_url);
+
+  return streams;
+}
+
 async function fetchJson(url, timeoutMs = 6000) {
   const sep = url.includes("?") ? "&" : "?";
   const controller = new AbortController();
@@ -544,49 +566,111 @@ async function loadFanCodeFeed() {
   return setCached("feed:fancode", items);
 }
 
+async function loadSonyLivFeed() {
+  const cached = getCached("feed:sonyliv");
+  if (cached) return cached;
+
+  const data = await fetchJson(FEED_SONYLIV_URL);
+  const rawMatches = Array.isArray(data?.matches) ? data.matches : [];
+  const lastUpdated = String(data?.["last update time"] || "").trim();
+  const items = [];
+
+  for (const m of rawMatches) {
+    const matchName = String(m?.match_name || "").trim();
+    const eventName = String(m?.event_name || "").trim();
+    const rawTitle = matchName || eventName;
+    if (!rawTitle) continue;
+
+    const isLiveBool = Boolean(m?.isLive);
+    const inferredStatus = isLiveBool
+      ? "LIVE"
+      : /\bupcoming\b/i.test(rawTitle)
+        ? "UPCOMING"
+        : "LIVE";
+    const status = normalizeStatus(inferredStatus);
+    const cleanTitle = rawTitle.replace(/^upcoming\s*-\s*/i, "").trim();
+    const displayTitle = matchName && eventName && matchName !== eventName
+      ? `${cleanTitle} - ${eventName}`
+      : cleanTitle;
+    const category = String(m?.event_category || "").trim();
+    const channel = String(m?.broadcast_channel || "").trim();
+    const lang = String(m?.audioLanguageName || "").trim();
+    const streams = extractSonyLivStreams(m);
+    const id = makeId(`sl|${m?.contentId || ""}|${displayTitle}`);
+
+    items.push({
+      id,
+      source: "sonyliv",
+      network: "sony",
+      title: displayTitle,
+      status,
+      category,
+      tournament: channel,
+      timingLabel: "Date & Time",
+      timingValue: lastUpdated || (status === "LIVE" ? "LIVE NOW" : "UPCOMING"),
+      streams,
+      searchText: `sony sonyliv ${m?.contentId || ""} ${matchName} ${eventName} ${category} ${channel} ${lang} ${status}`.toLowerCase(),
+    });
+  }
+
+  return setCached("feed:sonyliv", items);
+}
+
 async function loadAllEntries(mode = "all") {
   if (mode === "willow") return loadEventsFeed();
   if (mode === "tv") return loadPrimaryFeed();
   if (mode === "fancode") return loadFanCodeFeed();
+  if (mode === "sonyliv") return loadSonyLivFeed();
   if (mode === "star") {
     const list = await loadPrimaryFeed();
     return list.filter((i) => i.network === "star");
   }
   if (mode === "sony") {
-    const [p, sp] = await Promise.allSettled([loadPrimaryFeed(), loadSportsFeed()]);
+    const [p, sl, sp] = await Promise.allSettled([
+      loadPrimaryFeed(),
+      loadSonyLivFeed(),
+      loadSportsFeed(),
+    ]);
     return [
       ...(p.status === "fulfilled" ? p.value.filter((i) => i.network === "sony") : []),
+      ...(sl.status === "fulfilled" ? sl.value : []),
       ...(sp.status === "fulfilled"
         ? sp.value.filter((i) => i.searchText.includes("sony"))
         : []),
     ];
   }
   if (mode === "cricket") {
-    const [e, fc, sp] = await Promise.allSettled([
+    const [e, fc, sl, sp] = await Promise.allSettled([
       loadEventsFeed(),
       loadFanCodeFeed(),
+      loadSonyLivFeed(),
       loadSportsFeed(),
     ]);
     const events = e.status === "fulfilled" ? e.value : [];
     const fancode = fc.status === "fulfilled"
       ? fc.value.filter((i) => i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket"))
       : [];
+    const sonyliv = sl.status === "fulfilled"
+      ? sl.value.filter((i) => i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket"))
+      : [];
     const sports = sp.status === "fulfilled"
       ? sp.value.filter((i) => i.searchText.includes("cricket"))
       : [];
-    return [...events, ...fancode, ...sports];
+    return [...events, ...fancode, ...sonyliv, ...sports];
   }
 
-  const [p, e, fc, sp] = await Promise.allSettled([
+  const [p, e, fc, sl, sp] = await Promise.allSettled([
     loadPrimaryFeed(),
     loadEventsFeed(),
     loadFanCodeFeed(),
+    loadSonyLivFeed(),
     loadSportsFeed(),
   ]);
   return [
     ...(p.status === "fulfilled" ? p.value : []),
     ...(e.status === "fulfilled" ? e.value : []),
     ...(fc.status === "fulfilled" ? fc.value : []),
+    ...(sl.status === "fulfilled" ? sl.value : []),
     ...(sp.status === "fulfilled" ? sp.value : []),
   ];
 }
@@ -1335,4 +1419,3 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
-
