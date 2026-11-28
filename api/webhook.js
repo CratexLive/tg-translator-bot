@@ -149,24 +149,24 @@ function getSportEmoji(title = "", category = "", network = "") {
   return "";
 }
 
-function getStatusEmoji(item) {
+function getCardLeadEmoji(item) {
   const teamMark = getTeamEmoji(item?.title || "");
   const sportMark = getSportEmoji(item?.title || "", item?.category || "", item?.network || "");
   const extras = [teamMark, sportMark].filter(Boolean).join(" ");
 
   if (item?.source === "sportlink") {
-    return `${tgEmoji("live", "🔺")}${extras ? ` ${extras}` : ""}`;
+    return `${tgEmoji("live", "🔴")}${extras ? ` ${extras}` : ""}`;
   }
   const norm = normalizeStatus(item?.status);
-  if (norm === "LIVE") return `${tgEmoji("live", "🔺")}${extras ? ` ${extras}` : ""}`;
+  if (norm === "LIVE") return `${tgEmoji("live", "🔴")}${extras ? ` ${extras}` : ""}`;
   if (norm === "UPCOMING") return `${tgEmoji("upcoming", "⏳")}${extras ? ` ${extras}` : ""}`;
   return `${tgEmoji("ended", "🔻")}${extras ? ` ${extras}` : ""}`;
 }
 
 function getStatusButtonMark(item) {
-  if (item?.source === "sportlink") return "🔺";
+  if (item?.source === "sportlink") return "🔴";
   const norm = normalizeStatus(item?.status);
-  if (norm === "LIVE") return "🔺";
+  if (norm === "LIVE") return "🔴";
   if (norm === "UPCOMING") return "⏳";
   return "🔻";
 }
@@ -200,7 +200,7 @@ function convertBdtToIst(bdtStr) {
 
   const prefix = raw.slice(0, timeMatch.index).trim();
   if (!prefix) {
-    return dayShift === -1 ? `Prev Day • ${istTimePart}` : istTimePart;
+    return dayShift === -1 ? `Prev Day | ${istTimePart}` : istTimePart;
   }
 
   if (/^live\s*at$/i.test(prefix)) {
@@ -208,7 +208,7 @@ function convertBdtToIst(bdtStr) {
   }
 
   if (/^tomorrow$/i.test(prefix)) {
-    return dayShift === -1 ? `Today • ${istTimePart}` : `Tomorrow • ${istTimePart}`;
+    return dayShift === -1 ? `Today | ${istTimePart}` : `Tomorrow | ${istTimePart}`;
   }
 
   const dateMatch = prefix.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s*([A-Za-z]+)\s+(\d{1,2})$/i);
@@ -221,11 +221,11 @@ function convertBdtToIst(bdtStr) {
 
     if (dIdx !== -1 && mIdx !== -1 && dayNum > 1) {
       const prevDayName = days[(dIdx + 6) % 7];
-      return `${prevDayName}, ${months[mIdx]} ${dayNum - 1} • ${istTimePart}`;
+      return `${prevDayName}, ${months[mIdx]} ${dayNum - 1} | ${istTimePart}`;
     }
   }
 
-  return `${prefix} • ${istTimePart}`;
+  return `${prefix} | ${istTimePart}`;
 }
 
 function buildDirectPlayerLine({ streamUrl, cookie = "", keys = [], userAgent = "", referer = "" }) {
@@ -373,9 +373,9 @@ async function loadPrimaryFeed() {
       status: "CHANNEL",
       category: "",
       tournament: "",
-      timingLabel: "VALID TILL",
+      timingLabel: "Valid Till",
       timingValue: entry?.cookie_expire_ist || "ACTIVE",
-      streams: [{ label: "DIRECT STREAM", line }],
+      streams: [{ label: "STREAM URL", line }],
       searchText: `${entry?.id || ""} ${title}`.toLowerCase(),
     });
   }
@@ -408,7 +408,7 @@ async function loadEventsFeed() {
       status,
       category: "Cricket",
       tournament: String(m?.synopsis || "").trim(),
-      timingLabel: "SCHEDULE (IST)",
+      timingLabel: "Date & Time",
       timingValue: istTime,
       streams,
       searchText: `${m?.match_id || ""} ${title} ${m?.synopsis || ""} ${status} ${istTime}`.toLowerCase(),
@@ -447,7 +447,7 @@ async function loadSportsFeed() {
       status,
       category,
       tournament,
-      timingLabel: "START TIME",
+      timingLabel: "Date & Time",
       timingValue: startTime || "TBA",
       streams,
       searchText: `${title} ${category} ${tournament} ${info?.teamA || ""} ${info?.teamB || ""} ${streamText} ${status}`.toLowerCase(),
@@ -570,9 +570,9 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
 
   const text = [
     `${tgEmoji("alert", "⚠️")}  <b>${esc(toSmallCaps("ACCESS LOCKED"))}</b>`,
-    `━━━━━━━━━━━━━━━━━━━━`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ...listLines,
-    `━━━━━━━━━━━━━━━━━━━━`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
     `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("JOIN ABOVE & TAP VERIFY"))}  ${tgEmoji("pointDown", "👇🏻")}`,
   ].join("\n\n");
 
@@ -605,7 +605,7 @@ function buildStatusFilterKeyboard(scope, items, bucketId = "") {
     inline_keyboard: [
       [
         {
-          text: `🔺  ${toSmallCaps("LIVE")} (${liveCount})`,
+          text: `🔴  ${toSmallCaps("LIVE")} (${liveCount})`,
           callback_data: `flt:LIVE:${target}`,
         },
         {
@@ -644,7 +644,7 @@ function buildCommandMenuHeader({ iconKey, fallbackIcon, title, list, showStatus
   if (!showStatusCounts) {
     return [
       `${tgEmoji(iconKey, fallbackIcon)}  <b>${esc(toSmallCaps(title))}</b>`,
-      `━━━━━━━━━━━━━━━━━━━━`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━`,
       `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
       `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
     ].join("\n\n");
@@ -656,45 +656,50 @@ function buildCommandMenuHeader({ iconKey, fallbackIcon, title, list, showStatus
 
   return [
     `${tgEmoji(iconKey, fallbackIcon)}  <b>${esc(toSmallCaps(title))}</b>`,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    `${tgEmoji("live", "🔺")}  <b>${esc(toSmallCaps("LIVE"))}</b>  ⇢  <b>${liveCount}</b>    |    ${tgEmoji("upcoming", "⏳")}  <b>${esc(toSmallCaps("UPCOMING"))}</b>  ⇢  <b>${upcomingCount}</b>    |    ${tgEmoji("ended", "🔻")}  <b>${esc(toSmallCaps("FINISHED"))}</b>  ⇢  <b>${finishedCount}</b>`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `${tgEmoji("live", "🔴")}  <b>${esc(toSmallCaps("LIVE"))}</b>  ⇢  <b>${liveCount}</b>    |    ${tgEmoji("upcoming", "⏳")}  <b>${esc(toSmallCaps("UPCOMING"))}</b>  ⇢  <b>${upcomingCount}</b>    |    ${tgEmoji("ended", "🔻")}  <b>${esc(toSmallCaps("FINISHED"))}</b>  ⇢  <b>${finishedCount}</b>`,
     `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("CHOOSE STATUS OPTION BELOW"))}`,
   ].join("\n\n");
 }
 
 async function sendStreamCard(chatId, item) {
-  const mark = getStatusEmoji(item);
-  const lines = [
-    `${mark}  <b>${esc(toSmallCaps(item.title))}</b>`,
-    `━━━━━━━━━━━━━━━━━━━━`,
-  ];
-
-  if (item.tournament) {
-    lines.push(`${tgEmoji("eyes", "👀")}  <b>${esc(toSmallCaps("EVENT"))}</b>  ⇢  <b>${esc(toSmallCaps(item.tournament))}</b>`);
-  }
-
-  if (item.source !== "sportlink") {
-    lines.push(`${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("STATE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.status))}</b>`);
-  }
-
-  lines.push(`${tgEmoji("calendar", "📅")}  <b>${esc(toSmallCaps(item.timingLabel))}</b>  ⇢  <code>${esc(item.timingValue)}</code>`);
+  const leadMark = getCardLeadEmoji(item);
+  const titleLine = `${leadMark} <b>${esc(String(item.title || "").toUpperCase())}</b>`;
+  const timeLine = `${tgEmoji("calendar", "🕒")} <b>${esc(item.timingLabel || "Date & Time")}:</b> ${esc(item.timingValue || "TBA")}`;
 
   if (!item.streams?.length) {
-    lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NO ACTIVE STREAM RIGHT NOW"))}</b>`);
-    lines.push(`${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("TRY AGAIN CLOSER TO START TIME"))}`);
-    await sendText(chatId, lines.join("\n\n"));
+    const noStreamMsg = [
+      titleLine,
+      `━━━━━━━━━━━━━━━━━━━━━━━━`,
+      timeLine,
+      `━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `${tgEmoji("wrong", "❌")} <b>${esc(toSmallCaps("NO ACTIVE STREAM RIGHT NOW"))}</b>`,
+      `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
+    ].join("\n");
+
+    await sendText(chatId, noStreamMsg);
     return;
   }
 
-  lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-  lines.push(`${tgEmoji("bulb", "💡")}  <b>${esc(toSmallCaps("TAP LINK BELOW TO COPY"))}</b>`);
+  const streamBlocks = item.streams.map((s) => {
+    const streamHeading =
+      item.streams.length === 1 && s.label === "STREAM URL"
+        ? `${tgEmoji("bulb", "🍿")} <b>STREAM URL:</b>`
+        : `${tgEmoji("link", "🍿")} <b>${esc(String(s.label || "STREAM URL").toUpperCase())}:</b>`;
+    return `${streamHeading}\n${esc(s.line)}`;
+  });
 
-  for (const s of item.streams) {
-    lines.push(`${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(s.label))}</b>\n<code>${esc(s.line)}</code>`);
-  }
+  const cardText = [
+    titleLine,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    timeLine,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ...streamBlocks,
+    ``,
+    `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
+  ].join("\n");
 
-  await sendText(chatId, lines.join("\n\n"));
+  await sendText(chatId, cardText);
 }
 
 async function sendText(chatId, text, replyMarkup = null) {
@@ -757,7 +762,7 @@ export default async function handler(req, res) {
           chatId,
           [
             `${tgEmoji("tick", "✅")}  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
-            `━━━━━━━━━━━━━━━━━━━━`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━`,
             `${tgEmoji("willow", "🌐")}  <code>/Willow</code>`,
             `${tgEmoji("star", "⭐")}  <code>/Star</code>`,
             `${tgEmoji("sony", "📺")}  <code>/Sony</code>`,
@@ -818,7 +823,7 @@ export default async function handler(req, res) {
             messageId,
             [
               `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps(`${headerTitle} • ${statusFilter}`))}</b>`,
-              `━━━━━━━━━━━━━━━━━━━━`,
+              `━━━━━━━━━━━━━━━━━━━━━━━━`,
               `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("NO ITEMS IN THIS STATUS RIGHT NOW"))}`,
             ].join("\n\n"),
             {
@@ -832,7 +837,7 @@ export default async function handler(req, res) {
 
         const text = [
           `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps(`${headerTitle} • ${statusFilter}`))}</b>`,
-          `━━━━━━━━━━━━━━━━━━━━`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━`,
           `${tgEmoji("bulb", "💡")}  <b>${esc(toSmallCaps("SHOWING"))}</b>  ⇢  <b>${filtered.length}</b>`,
           `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP A MATCH BELOW"))}`,
         ].join("\n\n");
@@ -953,12 +958,12 @@ export default async function handler(req, res) {
     if (cmd === "/start" || cmd === "/help") {
       const help = [
         `${tgEmoji("speaker", "📢")}  <b>${esc(toSmallCaps("CRICXCRATE STREAM BOT"))}</b>  ${tgEmoji("free", "🆓")}`,
-        `━━━━━━━━━━━━━━━━━━━━`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━`,
         `${tgEmoji("willow", "🌐")}  <code>/Willow</code>`,
         `${tgEmoji("star", "⭐")}  <code>/Star</code>`,
         `${tgEmoji("sony", "📺")}  <code>/Sony</code>`,
         `${tgEmoji("searching", "🔎")}  <code>/Match name</code>  |  <code>/Tournament</code>`,
-        `━━━━━━━━━━━━━━━━━━━━`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━`,
         `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("SEND ANY COMMAND ABOVE"))}`,
       ].join("\n\n");
 
@@ -1040,7 +1045,7 @@ export default async function handler(req, res) {
         chatId,
         [
           `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
-          `━━━━━━━━━━━━━━━━━━━━`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━`,
           `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
         ].join("\n\n")
       );
