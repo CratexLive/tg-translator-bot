@@ -5,6 +5,8 @@ const FEED_EVENTS_URL =
   "https://raw.githubusercontent.com/srhady/willow-event/refs/heads/main/live_sports.json";
 const FEED_SPORTS_URL =
   "https://raw.githubusercontent.com/sm-monirulislam/Upcoming-and-Live-Sports-Data/main/Sports_data.json";
+const FEED_FANCODE_URL =
+  "https://raw.githubusercontent.com/kajju027/Fancode-Events-Json/refs/heads/main/fancode.json";
 
 const REQUIRED_CHANNELS = [
   {
@@ -322,6 +324,50 @@ function extractMatchStreams(rawStreams) {
   return streams;
 }
 
+function extractFanCodeStreams(match) {
+  const streams = [];
+  const seenUrls = new Set();
+  const baseLang = String(match?.language || "ENGLISH").trim().toUpperCase();
+
+  const pushUnique = (label, url) => {
+    const clean = String(url || "").trim();
+    if (!clean || seenUrls.has(clean)) return;
+    seenUrls.add(clean);
+    streams.push({ label, line: clean });
+  };
+
+  const sObj = match?.streams || {};
+  if (sObj.primary) pushUnique(`${baseLang} • 1080P`, sObj.primary);
+  if (sObj.fancode_cdn) pushUnique(`${baseLang} • AUTO HLS`, sObj.fancode_cdn);
+  if (sObj.fancode_bd_cdn) pushUnique(`${baseLang} • BD CDN`, sObj.fancode_bd_cdn);
+  if (sObj.fancode_np_cdn) pushUnique(`${baseLang} • NP CDN`, sObj.fancode_np_cdn);
+  if (sObj.fancode_lk_cdn) pushUnique(`${baseLang} • LK CDN`, sObj.fancode_lk_cdn);
+
+  if (sObj.backup && typeof sObj.backup === "object") {
+    for (const [k, v] of Object.entries(sObj.backup)) {
+      if (typeof v === "string") pushUnique(`BACKUP • ${k.toUpperCase()}`, v);
+    }
+  }
+
+  const auto = match?.auto_streams;
+  if (auto && typeof auto === "object") {
+    for (const [langKey, langBlock] of Object.entries(auto)) {
+      const qMap = langBlock?.streams || {};
+      const cookie = String(langBlock?.cookie || "").trim();
+      for (const q of ["1080p", "720p", "480p"]) {
+        if (!qMap[q]) continue;
+        const line = buildDirectPlayerLine({
+          streamUrl: qMap[q],
+          cookie,
+        });
+        pushUnique(`${langKey.toUpperCase()} • ${q.toUpperCase()}`, line);
+      }
+    }
+  }
+
+  return streams;
+}
+
 async function fetchJson(url, timeoutMs = 6000) {
   const sep = url.includes("?") ? "&" : "?";
   const controller = new AbortController();
@@ -460,9 +506,48 @@ async function loadSportsFeed() {
   return setCached("feed:sports", items);
 }
 
+async function loadFanCodeFeed() {
+  const cached = getCached("feed:fancode");
+  if (cached) return cached;
+
+  const data = await fetchJson(FEED_FANCODE_URL);
+  const rawMatches = Array.isArray(data?.matches) ? data.matches : [];
+  const items = [];
+
+  for (const m of rawMatches) {
+    const rawTitle = String(m?.title || "").trim();
+    const tournament = String(m?.tournament || "").trim();
+    if (!rawTitle) continue;
+
+    const displayTitle = tournament ? `${rawTitle} - ${tournament}` : rawTitle;
+    const status = normalizeStatus(m?.status || "UPCOMING");
+    const category = String(m?.category || "").trim();
+    const startTime = String(m?.startTime || "").trim() || (status === "LIVE" ? "LIVE NOW" : "TBA");
+    const streams = extractFanCodeStreams(m);
+    const id = makeId(`fc|${m?.match_id || ""}|${displayTitle}`);
+
+    items.push({
+      id,
+      source: "fancode",
+      network: "fancode",
+      title: displayTitle,
+      status,
+      category,
+      tournament,
+      timingLabel: "Date & Time",
+      timingValue: startTime,
+      streams,
+      searchText: `fancode ${m?.match_id || ""} ${rawTitle} ${tournament} ${category} ${status} ${startTime}`.toLowerCase(),
+    });
+  }
+
+  return setCached("feed:fancode", items);
+}
+
 async function loadAllEntries(mode = "all") {
   if (mode === "willow") return loadEventsFeed();
   if (mode === "tv") return loadPrimaryFeed();
+  if (mode === "fancode") return loadFanCodeFeed();
   if (mode === "star") {
     const list = await loadPrimaryFeed();
     return list.filter((i) => i.network === "star");
@@ -477,27 +562,31 @@ async function loadAllEntries(mode = "all") {
     ];
   }
   if (mode === "cricket") {
-    const [e, sp] = await Promise.allSettled([loadEventsFeed(), loadSportsFeed()]);
+    const [e, fc, sp] = await Promise.allSettled([
+      loadEventsFeed(),
+      loadFanCodeFeed(),
+      loadSportsFeed(),
+    ]);
     const events = e.status === "fulfilled" ? e.value : [];
+    const fancode = fc.status === "fulfilled"
+      ? fc.value.filter((i) => i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket"))
+      : [];
     const sports = sp.status === "fulfilled"
       ? sp.value.filter((i) => i.searchText.includes("cricket"))
       : [];
-    return [...events, ...sports];
-  }
-  if (mode === "fancode") {
-    const sp = await loadSportsFeed().catch(() => []);
-    const fc = sp.filter((i) => i.searchText.includes("fancode"));
-    return fc.length ? fc : sp;
+    return [...events, ...fancode, ...sports];
   }
 
-  const [p, e, sp] = await Promise.allSettled([
+  const [p, e, fc, sp] = await Promise.allSettled([
     loadPrimaryFeed(),
     loadEventsFeed(),
+    loadFanCodeFeed(),
     loadSportsFeed(),
   ]);
   return [
     ...(p.status === "fulfilled" ? p.value : []),
     ...(e.status === "fulfilled" ? e.value : []),
+    ...(fc.status === "fulfilled" ? fc.value : []),
     ...(sp.status === "fulfilled" ? sp.value : []),
   ];
 }
@@ -872,11 +961,12 @@ export default async function handler(req, res) {
             baseList = all.filter((i) => i.network === "sony" || i.searchText.includes("sony"));
             headerTitle = "SONYLIV";
           } else if (val === "cricket") {
-            baseList = all.filter((i) => i.network === "willow" || i.searchText.includes("cricket"));
+            baseList = all.filter(
+              (i) => i.network === "willow" || i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket")
+            );
             headerTitle = "CRICKET";
           } else if (val === "fancode") {
-            const fc = all.filter((i) => i.searchText.includes("fancode"));
-            baseList = fc.length ? fc : all.filter((i) => i.source === "sports");
+            baseList = all.filter((i) => i.source === "fancode");
             headerTitle = "FANCODE";
           } else {
             baseList = all;
@@ -962,12 +1052,11 @@ export default async function handler(req, res) {
               : scope === "sony" || scope === "sonyliv"
                 ? all.filter((i) => i.network === "sony" || i.searchText.includes("sony"))
                 : scope === "cricket"
-                  ? all.filter((i) => i.network === "willow" || i.searchText.includes("cricket"))
+                  ? all.filter(
+                      (i) => i.network === "willow" || i.category.toLowerCase() === "cricket" || i.searchText.includes("cricket")
+                    )
                   : scope === "fancode"
-                    ? (() => {
-                        const fc = all.filter((i) => i.searchText.includes("fancode"));
-                        return fc.length ? fc : all.filter((i) => i.source === "sports");
-                      })()
+                    ? all.filter((i) => i.source === "fancode")
                     : all;
 
         const meta =
