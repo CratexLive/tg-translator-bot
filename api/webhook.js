@@ -720,7 +720,7 @@ function getWebhookTargetUrl(req) {
 }
 
 async function scheduleDeleteMessage(chatId, messageId, req = null, delaySec = AUTO_DELETE_DELAY_SEC) {
-  if (!chatId || !messageId) return false;
+  if (!chatId || !messageId) return { ok: false, reason: "MISSING_IDS" };
 
   const qstashToken = String(process.env.QSTASH_TOKEN || "").trim();
   const qstashUrl = String(
@@ -739,9 +739,11 @@ async function scheduleDeleteMessage(chatId, messageId, req = null, delaySec = A
         "Upstash-Delay": `${delaySec}s`,
       },
       body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
-    }).catch(() => null);
+    }).catch((e) => ({ ok: false, status: 0, text: async () => e.message }));
 
-    if (res?.ok) return true;
+    if (res?.ok) return { ok: true };
+    const errText = await res?.text?.().catch(() => "unknown");
+    return { ok: false, reason: `QStash (${res?.status}): ${errText}` };
   }
 
   const timer = setTimeout(() => {
@@ -751,7 +753,11 @@ async function scheduleDeleteMessage(chatId, messageId, req = null, delaySec = A
     }).catch(() => {});
   }, delaySec * 1000);
   if (typeof timer.unref === "function") timer.unref();
-  return false;
+
+  return {
+    ok: false,
+    reason: `MISSING_ENV (token=${Boolean(qstashToken)}, url=${callbackUrl || "none"})`,
+  };
 }
 
 async function isMemberOfChannel(channelId, userId, bypassCache = false) {
@@ -980,7 +986,12 @@ async function sendStreamCard(chatId, item, req = null) {
   const sent = await sendText(chatId, cardText);
   const sentMsgId = sent?.result?.message_id;
   if (sentMsgId) {
-    await scheduleDeleteMessage(chatId, sentMsgId, req, AUTO_DELETE_DELAY_SEC).catch(() => {});
+    const sched = await scheduleDeleteMessage(chatId, sentMsgId, req, AUTO_DELETE_DELAY_SEC).catch(
+      (e) => ({ ok: false, reason: e.message })
+    );
+    if (!sched?.ok) {
+      await sendText(chatId, `⚠️ <code>${esc(sched?.reason || "QSTASH_FAILED")}</code>`).catch(() => {});
+    }
   }
 }
 
