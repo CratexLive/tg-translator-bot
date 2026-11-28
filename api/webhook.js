@@ -27,13 +27,20 @@ const CUSTOM_EMOJI_MAP = {
   ended: "",
   alert: "6257780484281997093",
   link: "6275878213746955453",
-  info: "",
-  tip: "",
-  time: "",
-  empty: "",
-  item: "",
-  brand: "",
-  heart: "",
+  pin: "5397782960512444700",
+  india: "6098034050495157840",
+  australia: "5395748653547662674",
+  austria: "5868536802360431719",
+  southAfrica: "5866340003897941721",
+  newZealand: "5913640044937089340",
+  pakistan: "5987549508613969266",
+  pointDown: "5231102735817918643",
+  eyes: "5210956306952758910",
+  bulb: "5422439311196834318",
+  searching: "5341715473882955310",
+  speaker: "5388632425314140043",
+  wrong: "5240241223632954241",
+  globe: "5447410659077661506",
 };
 
 const SMALL_CAPS_MAP = {
@@ -102,10 +109,22 @@ function makeId(raw) {
   return crypto.createHash("sha1").update(String(raw || "").toLowerCase()).digest("hex").slice(0, 14);
 }
 
-function getStatusEmoji(status) {
-  if (status === "LIVE") return tgEmoji("live", "🔺");
-  if (status === "UPCOMING") return tgEmoji("upcoming", "⏳");
-  return tgEmoji("ended", "🔻");
+function getTeamEmoji(title = "") {
+  const t = String(title).toLowerCase();
+  if (/\bindia\b/.test(t)) return tgEmoji("india", "🇮🇳");
+  if (/\baustralia\b/.test(t)) return tgEmoji("australia", "🦘");
+  if (/\baustria\b/.test(t)) return tgEmoji("austria", "🇦🇹");
+  if (/south\s*africa|\bsa\b/.test(t)) return tgEmoji("southAfrica", "🇿🇦");
+  if (/new\s*zealand|\bnz\b/.test(t)) return tgEmoji("newZealand", "🇳🇿");
+  if (/\bpakistan\b|\bpak\b/.test(t)) return tgEmoji("pakistan", "🇵🇰");
+  return "";
+}
+
+function getStatusEmoji(status, title = "") {
+  const teamMark = getTeamEmoji(title);
+  if (status === "LIVE") return `${tgEmoji("live", "🔺")}${teamMark ? ` ${teamMark}` : ""}`;
+  if (status === "UPCOMING") return `${tgEmoji("upcoming", "⏳")}${teamMark ? ` ${teamMark}` : ""}`;
+  return `${tgEmoji("ended", "🔻")}${teamMark ? ` ${teamMark}` : ""}`;
 }
 
 function getStatusButtonMark(status) {
@@ -496,7 +515,7 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
     `━━━━━━━━━━━━━━━━━━━━`,
     ...listLines,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `${tgEmoji("tip", "💡")}  ${esc(toSmallCaps("JOIN ABOVE & TAP VERIFY"))}`,
+    `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("JOIN ABOVE & TAP VERIFY"))}  ${tgEmoji("pointDown", "👇🏻")}`,
   ].join("\n\n");
 
   const keyboardRows = targetList.map((ch) => [
@@ -523,27 +542,27 @@ function buildSelectionKeyboard(items) {
 }
 
 async function sendStreamCard(chatId, item) {
-  const mark = getStatusEmoji(item.status);
+  const mark = getStatusEmoji(item.status, item.title);
   const lines = [
     `${mark}  <b>${esc(toSmallCaps(item.title))}</b>`,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `${tgEmoji("info", "📌")}  <b>${esc(toSmallCaps("STATE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.status))}</b>`,
-    `${tgEmoji("time", "⏳")}  <b>${esc(toSmallCaps(item.timingLabel))}</b>  ⇢  <code>${esc(item.timingValue)}</code>`,
+    `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("STATE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.status))}</b>`,
+    `${tgEmoji("eyes", "👀")}  <b>${esc(toSmallCaps(item.timingLabel))}</b>  ⇢  <code>${esc(item.timingValue)}</code>`,
   ];
 
   if (!item.streams?.length) {
     lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`${tgEmoji("empty", "🫥")}  <b>${esc(toSmallCaps("NO ACTIVE STREAM RIGHT NOW"))}</b>`);
-    lines.push(`${tgEmoji("tip", "💡")}  ${esc(toSmallCaps("TRY AGAIN CLOSER TO START TIME"))}`);
+    lines.push(`${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NO ACTIVE STREAM RIGHT NOW"))}</b>`);
+    lines.push(`${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("TRY AGAIN CLOSER TO START TIME"))}`);
     await sendText(chatId, lines.join("\n\n"));
     return;
   }
 
   lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-  lines.push(`${tgEmoji("tip", "💡")}  <b>${esc(toSmallCaps("TAP TO COPY FOR PLAYER"))}</b>`);
+  lines.push(`${tgEmoji("bulb", "💡")}  <b>${esc(toSmallCaps("TAP TO COPY FOR PLAYER"))}</b>`);
 
   for (const s of item.streams) {
-    lines.push(`${tgEmoji("link", "🥂")}  <b>${esc(toSmallCaps(s.label))}</b>\n<code>${esc(s.line)}</code>`);
+    lines.push(`${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(s.label))}</b>\n<code>${esc(s.line)}</code>`);
   }
 
   await sendText(chatId, lines.join("\n\n"));
@@ -593,12 +612,12 @@ export default async function handler(req, res) {
         await sendText(
           chatId,
           [
-            `${tgEmoji("brand", "🥂")}  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
+            `${tgEmoji("speaker", "📢")}  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
             `━━━━━━━━━━━━━━━━━━━━`,
-            `${tgEmoji("item", "🧩")}  <code>/Willow</code>`,
-            `${tgEmoji("item", "🧩")}  <code>/Star</code>`,
-            `${tgEmoji("item", "🧩")}  <code>/Sony</code>`,
-            `${tgEmoji("tip", "💡")}  <code>/Match name</code>  |  <code>/Tournament</code>`,
+            `${tgEmoji("globe", "🌐")}  <code>/Willow</code>`,
+            `${tgEmoji("globe", "🌐")}  <code>/Star</code>`,
+            `${tgEmoji("globe", "🌐")}  <code>/Sony</code>`,
+            `${tgEmoji("searching", "🔎")}  <code>/Match name</code>  |  <code>/Tournament</code>`,
           ].join("\n\n")
         );
         return res.status(200).json({ ok: true });
@@ -638,7 +657,7 @@ export default async function handler(req, res) {
           const lines = found.map((x) => `${esc(x.char)}  ⇢  <code>${esc(x.id)}</code>`);
           await sendText(
             chatId,
-            `${tgEmoji("link", "📌")}  <b>${esc(toSmallCaps("CUSTOM EMOJI IDS"))}</b>\n\n${lines.join("\n")}`
+            `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("CUSTOM EMOJI IDS"))}</b>\n\n${lines.join("\n")}`
           );
         }
       }
@@ -657,14 +676,14 @@ export default async function handler(req, res) {
 
     if (cmd === "/start" || cmd === "/help") {
       const help = [
-        `${tgEmoji("brand", "🥂")}  <b>${esc(toSmallCaps("CRICXCRATE STREAM BOT"))}</b>`,
+        `${tgEmoji("speaker", "📢")}  <b>${esc(toSmallCaps("CRICXCRATE STREAM BOT"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `${tgEmoji("live", "🔺")}  <code>/Willow</code>`,
-        `${tgEmoji("item", "🧩")}  <code>/Star</code>`,
-        `${tgEmoji("item", "🧩")}  <code>/Sony</code>`,
-        `${tgEmoji("tip", "💡")}  <code>/Match name</code>  |  <code>/Tournament</code>`,
+        `${tgEmoji("globe", "🌐")}  <code>/Willow</code>`,
+        `${tgEmoji("globe", "🌐")}  <code>/Star</code>`,
+        `${tgEmoji("globe", "🌐")}  <code>/Sony</code>`,
+        `${tgEmoji("searching", "🔎")}  <code>/Match name</code>  |  <code>/Tournament</code>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `${tgEmoji("heart", "🤍")}  ${esc(toSmallCaps("SEND ANY COMMAND ABOVE"))}`,
+        `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("SEND ANY COMMAND ABOVE"))}`,
       ].join("\n\n");
 
       await sendText(chatId, help);
@@ -674,7 +693,7 @@ export default async function handler(req, res) {
     if (cmd === "/willow" && !extra) {
       const list = await loadAllEntries("willow");
       if (!list.length) {
-        await sendText(chatId, `${tgEmoji("alert", "🛑")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
@@ -682,10 +701,10 @@ export default async function handler(req, res) {
       const upcomingCount = list.filter((i) => i.status === "UPCOMING").length;
 
       const head = [
-        `${tgEmoji("live", "🔺")}  <b>${esc(toSmallCaps("WILLOW (IST)"))}</b>`,
+        `${tgEmoji("globe", "🌐")}  <b>${esc(toSmallCaps("WILLOW (IST)"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `${tgEmoji("live", "🔺")}  <b>${esc(toSmallCaps("LIVE"))}</b>  ⇢  <b>${liveCount}</b>    |    ${tgEmoji("upcoming", "⏳")}  <b>${esc(toSmallCaps("UPCOMING"))}</b>  ⇢  <b>${upcomingCount}</b>`,
-        `${tgEmoji("heart", "🤍")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
+        `${tgEmoji("live", "🔺")}  <b>${esc(toSmallCaps("LIVE"))}</b>  ⇢  <b>${liveCount}</b>    |    ${tgEmoji("eyes", "👀")}  <b>${esc(toSmallCaps("UPCOMING"))}</b>  ⇢  <b>${upcomingCount}</b>`,
+        `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
       ].join("\n\n");
 
       await sendText(chatId, head, buildSelectionKeyboard(list));
@@ -695,15 +714,15 @@ export default async function handler(req, res) {
     if (cmd === "/star" && !extra) {
       const list = await loadAllEntries("star");
       if (!list.length) {
-        await sendText(chatId, `${tgEmoji("alert", "🛑")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
       const head = [
-        `${tgEmoji("item", "🧩")}  <b>${esc(toSmallCaps("STAR"))}</b>`,
+        `${tgEmoji("globe", "🌐")}  <b>${esc(toSmallCaps("STAR"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `${tgEmoji("info", "📌")}  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
-        `${tgEmoji("heart", "🤍")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
+        `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
+        `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
       ].join("\n\n");
 
       await sendText(chatId, head, buildSelectionKeyboard(list));
@@ -713,15 +732,15 @@ export default async function handler(req, res) {
     if (cmd === "/sony" && !extra) {
       const list = await loadAllEntries("sony");
       if (!list.length) {
-        await sendText(chatId, `${tgEmoji("alert", "🛑")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
         return res.status(200).json({ ok: true });
       }
 
       const head = [
-        `${tgEmoji("item", "🧩")}  <b>${esc(toSmallCaps("SONY"))}</b>`,
+        `${tgEmoji("globe", "🌐")}  <b>${esc(toSmallCaps("SONY"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `${tgEmoji("info", "📌")}  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
-        `${tgEmoji("heart", "🤍")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
+        `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
+        `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
       ].join("\n\n");
 
       await sendText(chatId, head, buildSelectionKeyboard(list));
@@ -737,9 +756,9 @@ export default async function handler(req, res) {
       await sendText(
         chatId,
         [
-          `${tgEmoji("alert", "🛑")}  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
+          `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
           `━━━━━━━━━━━━━━━━━━━━`,
-          `${tgEmoji("empty", "🫥")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
+          `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
@@ -751,10 +770,10 @@ export default async function handler(req, res) {
     }
 
     const head = [
-      `${tgEmoji("info", "📌")}  <b>${esc(toSmallCaps(`RESULTS : ${query.toUpperCase()}`))}</b>`,
+      `${tgEmoji("searching", "🔎")}  <b>${esc(toSmallCaps(`RESULTS : ${query.toUpperCase()}`))}</b>`,
       `━━━━━━━━━━━━━━━━━━━━`,
-      `${tgEmoji("tip", "💡")}  <b>${esc(toSmallCaps("FOUND"))}</b>  ⇢  <b>${matched.length}</b>`,
-      `${tgEmoji("heart", "🤍")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
+      `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("FOUND"))}</b>  ⇢  <b>${matched.length}</b>`,
+      `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
     ].join("\n\n");
 
     await sendText(chatId, head, buildSelectionKeyboard(matched));
