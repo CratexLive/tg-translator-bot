@@ -24,7 +24,6 @@ const REQUIRED_CHANNELS = [
 ];
 
 const REQUIRE_ALL_CHANNELS = true;
-const AUTO_DELETE_DELAY_SEC = 30;
 
 const CUSTOM_EMOJI_MAP = {
   live: "5264919878082509254",
@@ -73,6 +72,7 @@ const SMALL_CAPS_MAP = {
 
 const CACHE_TTL_MS = 30000;
 const MEMBER_CACHE_TTL_MS = 15000;
+const LAST_CARD_TTL_MS = 24 * 60 * 60 * 1000;
 const cache = new Map();
 
 function getCached(key) {
@@ -709,55 +709,19 @@ async function telegramApi(method, payload) {
   }
 }
 
-function getWebhookTargetUrl(req) {
-  if (process.env.BOT_WEBHOOK_URL) {
-    return String(process.env.BOT_WEBHOOK_URL).trim();
-  }
-  const host = String(req?.headers?.["x-forwarded-host"] || req?.headers?.host || "").trim();
-  const proto = String(req?.headers?.["x-forwarded-proto"] || "https").trim();
-  if (!host) return "";
-  return `${proto}://${host}${req?.url?.split("?")[0] || "/"}`;
-}
-
-async function scheduleDeleteMessage(chatId, messageId, req = null, delaySec = AUTO_DELETE_DELAY_SEC) {
-  if (!chatId || !messageId) return { ok: false, reason: "MISSING_IDS" };
-
-  const qstashToken = String(process.env.QSTASH_TOKEN || "").trim();
-  const qstashUrl = String(
-    process.env.QSTASH_URL || "https://qstash-eu-central-1.upstash.io"
-  ).trim().replace(/\/+$/, "");
-  const callbackUrl = getWebhookTargetUrl(req);
-
-  if (qstashToken && callbackUrl) {
-    const sep = callbackUrl.includes("?") ? "&" : "?";
-    const destination = `${callbackUrl}${sep}action=delete`;
-    const res = await fetch(`${qstashUrl}/v2/publish/${encodeURIComponent(destination)}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${qstashToken}`,
-        "Content-Type": "application/json",
-        "Upstash-Delay": `${delaySec}s`,
-      },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
-    }).catch((e) => ({ ok: false, status: 0, text: async () => e.message }));
-
-    if (res?.ok) return { ok: true };
-    const errText = await res?.text?.().catch(() => "unknown");
-    return { ok: false, reason: `QStash (${res?.status}): ${errText}` };
-  }
-
-  const timer = setTimeout(() => {
-    telegramApi("deleteMessage", {
+async function replacePreviousStreamCard(chatId, nextMessageId) {
+  if (!chatId) return;
+  const key = `lastcard:${chatId}`;
+  const prevMsgId = getCached(key);
+  if (prevMsgId && prevMsgId !== nextMessageId) {
+    await telegramApi("deleteMessage", {
       chat_id: chatId,
-      message_id: messageId,
+      message_id: prevMsgId,
     }).catch(() => {});
-  }, delaySec * 1000);
-  if (typeof timer.unref === "function") timer.unref();
-
-  return {
-    ok: false,
-    reason: `MISSING_ENV (token=${Boolean(qstashToken)}, url=${callbackUrl || "none"})`,
-  };
+  }
+  if (nextMessageId) {
+    setCached(key, nextMessageId, LAST_CARD_TTL_MS);
+  }
 }
 
 async function isMemberOfChannel(channelId, userId, bypassCache = false) {
@@ -815,8 +779,8 @@ function getBotCommandsGuideText() {
     ``,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    `${tgEmoji("upcoming", "⏳")} <b>${esc(toSmallCaps("AUTOMATED STREAM PROTECTION"))}</b>`,
-    `${esc(toSmallCaps(`All stream links are automatically deleted after ${AUTO_DELETE_DELAY_SEC} seconds to ensure temporary and secure access.`))}`,
+    `${tgEmoji("bulb", "💡")} <b>${esc(toSmallCaps("CLEAN STREAM VIEW"))}</b>`,
+    `${esc(toSmallCaps("Sending a new stream card automatically deletes the previous stream card in chat."))}`,
   ].join("\n");
 }
 
@@ -945,7 +909,7 @@ function buildCommandMenuHeader({ iconKey, fallbackIcon, title, list, showStatus
   ].join("\n\n");
 }
 
-async function sendStreamCard(chatId, item, req = null) {
+async function sendStreamCard(chatId, item) {
   const leadMark = getCardLeadEmoji(item);
   const titleLine = `${leadMark} <b>${esc(String(item.title || "").toUpperCase())}</b>`;
   const timeLine = `${tgEmoji("calendar", "🕒")} <b>${esc(item.timingLabel || "Date & Time")}:</b> ${esc(item.timingValue || "TBA")}`;
@@ -960,7 +924,8 @@ async function sendStreamCard(chatId, item, req = null) {
       `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
     ].join("\n");
 
-    await sendText(chatId, noStreamMsg);
+    const sentNoStream = await sendText(chatId, noStreamMsg);
+    await replacePreviousStreamCard(chatId, sentNoStream?.result?.message_id);
     return;
   }
 
@@ -980,19 +945,10 @@ async function sendStreamCard(chatId, item, req = null) {
     ...streamBlocks,
     ``,
     `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
-    `${tgEmoji("upcoming", "⏳")} Auto-deletes in ${AUTO_DELETE_DELAY_SEC} seconds.`,
   ].join("\n");
 
   const sent = await sendText(chatId, cardText);
-  const sentMsgId = sent?.result?.message_id;
-  if (sentMsgId) {
-    const sched = await scheduleDeleteMessage(chatId, sentMsgId, req, AUTO_DELETE_DELAY_SEC).catch(
-      (e) => ({ ok: false, reason: e.message })
-    );
-    if (!sched?.ok) {
-      await sendText(chatId, `⚠️ <code>${esc(sched?.reason || "QSTASH_FAILED")}</code>`).catch(() => {});
-    }
-  }
+  await replacePreviousStreamCard(chatId, sent?.result?.message_id);
 }
 
 async function sendText(chatId, text, replyMarkup = null) {
@@ -1034,18 +990,6 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   try {
-    const queryAction = String(req.query?.action || "").toLowerCase();
-    if (queryAction === "delete") {
-      const { chat_id: chatId, message_id: messageId } = req.body || {};
-      if (chatId && messageId) {
-        await telegramApi("deleteMessage", {
-          chat_id: chatId,
-          message_id: messageId,
-        }).catch(() => {});
-      }
-      return res.status(200).json({ ok: true, deleted: true });
-    }
-
     const update = req.body || {};
 
     if (update.callback_query) {
@@ -1239,7 +1183,7 @@ export default async function handler(req, res) {
         }
 
         await answerCallback(cq.id, toSmallCaps(selected.title));
-        await sendStreamCard(chatId, selected, req);
+        await sendStreamCard(chatId, selected);
         return res.status(200).json({ ok: true });
       }
 
@@ -1354,7 +1298,7 @@ export default async function handler(req, res) {
       }
 
       if (matchedTv.length === 1) {
-        await sendStreamCard(chatId, matchedTv[0], req);
+        await sendStreamCard(chatId, matchedTv[0]);
         return res.status(200).json({ ok: true });
       }
 
@@ -1454,7 +1398,7 @@ export default async function handler(req, res) {
     }
 
     if (matched.length === 1) {
-      await sendStreamCard(chatId, matched[0], req);
+      await sendStreamCard(chatId, matched[0]);
       return res.status(200).json({ ok: true });
     }
 
