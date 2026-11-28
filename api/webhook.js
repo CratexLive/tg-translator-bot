@@ -571,9 +571,6 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
 
 function hasStatusFilter(scope, list) {
   if (scope === "willow" || scope === "star") return false;
-  if (scope === "sony") {
-    return list.some((i) => i.source !== "sportlink");
-  }
   return list.some((i) => i.source !== "sportlink");
 }
 
@@ -645,6 +642,20 @@ function buildCommandMenuHeader({ iconKey, fallbackIcon, title, list, showStatus
   ].join("\n\n");
 }
 
+function buildStreamActionKeyboard(item) {
+  const streams = Array.isArray(item?.streams) ? item.streams : [];
+  if (!streams.length) return null;
+
+  const rows = streams.map((s, idx) => [
+    {
+      text: `📋  ${toSmallCaps(`COPY • ${s.label}`)}`.slice(0, 60),
+      callback_data: `cpy:${item.id}:${idx}`,
+    },
+  ]);
+
+  return { inline_keyboard: rows };
+}
+
 async function sendStreamCard(chatId, item) {
   const mark = getStatusEmoji(item);
   const lines = [
@@ -667,13 +678,26 @@ async function sendStreamCard(chatId, item) {
   }
 
   lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-  lines.push(`${tgEmoji("bulb", "💡")}  <b>${esc(toSmallCaps("TAP TO COPY FOR PLAYER"))}</b>`);
-
   for (const s of item.streams) {
-    lines.push(`${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(s.label))}</b>\n<code>${esc(s.line)}</code>`);
+    lines.push(`${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(s.label))}</b>`);
   }
+  lines.push(`${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP BUTTON BELOW TO GET STREAM LINK"))}`);
 
-  await sendText(chatId, lines.join("\n\n"));
+  await sendText(chatId, lines.join("\n\n"), buildStreamActionKeyboard(item));
+}
+
+async function sendSingleStreamLink(chatId, item, streamIndex) {
+  const s = item?.streams?.[streamIndex];
+  if (!s) return false;
+
+  const text = [
+    `${tgEmoji("link", "🔗")}  <b>${esc(toSmallCaps(`${item.title} • ${s.label}`))}</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `<code>${esc(s.line)}</code>`,
+  ].join("\n\n");
+
+  await sendText(chatId, text);
+  return true;
 }
 
 async function sendText(chatId, text, replyMarkup = null) {
@@ -897,6 +921,27 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      if (chatId && prefix === "cpy") {
+        const sub = await checkRequiredChannels(userId);
+        if (!sub.allowed) {
+          await sendJoinPrompt(chatId, sub.missing, cq.id);
+          return res.status(200).json({ ok: true });
+        }
+
+        const all = await loadAllEntries("all");
+        const selected = all.find((c) => c.id === arg1);
+        const idx = parseInt(arg2 || "0", 10);
+        const ok = selected ? await sendSingleStreamLink(chatId, selected, idx) : false;
+
+        if (!ok) {
+          await answerCallback(cq.id, toSmallCaps("STREAM EXPIRED"), true);
+          return res.status(200).json({ ok: true });
+        }
+
+        await answerCallback(cq.id, toSmallCaps("LINK SENT"));
+        return res.status(200).json({ ok: true });
+      }
+
       return res.status(200).json({ ok: true });
     }
 
@@ -1049,4 +1094,3 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
-
