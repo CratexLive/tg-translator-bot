@@ -138,16 +138,20 @@ function getTeamEmoji(title = "") {
   return "";
 }
 
-function getStatusEmoji(status, title = "") {
-  const norm = normalizeStatus(status);
-  const teamMark = getTeamEmoji(title);
+function getStatusEmoji(item) {
+  const teamMark = getTeamEmoji(item?.title || "");
+  if (item?.source === "sportlink") {
+    return teamMark ? `${tgEmoji("live", "🔺")} ${teamMark}` : tgEmoji("live", "🔺");
+  }
+  const norm = normalizeStatus(item?.status);
   if (norm === "LIVE") return `${tgEmoji("live", "🔺")}${teamMark ? ` ${teamMark}` : ""}`;
   if (norm === "UPCOMING") return `${tgEmoji("upcoming", "⏳")}${teamMark ? ` ${teamMark}` : ""}`;
   return `${tgEmoji("ended", "🔻")}${teamMark ? ` ${teamMark}` : ""}`;
 }
 
-function getStatusButtonMark(status) {
-  const norm = normalizeStatus(status);
+function getStatusButtonMark(item) {
+  if (item?.source === "sportlink") return "🔺";
+  const norm = normalizeStatus(item?.status);
   if (norm === "LIVE") return "🔺";
   if (norm === "UPCOMING") return "⏳";
   return "🔻";
@@ -349,9 +353,10 @@ async function loadPrimaryFeed() {
     const id = makeId(`p|${entry?.id || ""}|${title}`);
     items.push({
       id,
+      source: "sportlink",
       network,
       title,
-      status: "LIVE",
+      status: "CHANNEL",
       timingLabel: "VALID TILL",
       timingValue: entry?.cookie_expire_ist || "ACTIVE",
       streams: [{ label: "DIRECT STREAM", line }],
@@ -381,6 +386,7 @@ async function loadEventsFeed() {
 
     items.push({
       id,
+      source: "willow",
       network: "willow",
       title,
       status,
@@ -417,6 +423,7 @@ async function loadSportsFeed() {
     const streamText = streams.map((s) => s.label).join(" ");
     items.push({
       id,
+      source: "sports",
       network: "sports",
       title,
       status,
@@ -562,6 +569,14 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
   await sendText(chatId, text, { inline_keyboard: keyboardRows });
 }
 
+function hasStatusFilter(scope, list) {
+  if (scope === "willow" || scope === "star") return false;
+  if (scope === "sony") {
+    return list.some((i) => i.source !== "sportlink");
+  }
+  return list.some((i) => i.source !== "sportlink");
+}
+
 function buildStatusFilterKeyboard(scope, items, bucketId = "") {
   const liveCount = items.filter((i) => normalizeStatus(i.status) === "LIVE").length;
   const upcomingCount = items.filter((i) => normalizeStatus(i.status) === "UPCOMING").length;
@@ -598,7 +613,7 @@ function buildStatusFilterKeyboard(scope, items, bucketId = "") {
 function buildSelectionKeyboard(items, backData = "") {
   const rows = [];
   for (const item of items.slice(0, 45)) {
-    const mark = getStatusButtonMark(item.status);
+    const mark = getStatusButtonMark(item);
     const text = `${mark}  ${toSmallCaps(item.title)}`.slice(0, 60);
     rows.push([{ text, callback_data: `pick:${item.id}` }]);
   }
@@ -608,7 +623,16 @@ function buildSelectionKeyboard(items, backData = "") {
   return { inline_keyboard: rows };
 }
 
-function buildCommandMenuHeader({ iconKey, fallbackIcon, title, list }) {
+function buildCommandMenuHeader({ iconKey, fallbackIcon, title, list, showStatusCounts = true }) {
+  if (!showStatusCounts) {
+    return [
+      `${tgEmoji(iconKey, fallbackIcon)}  <b>${esc(toSmallCaps(title))}</b>`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("AVAILABLE"))}</b>  ⇢  <b>${list.length}</b>`,
+      `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
+    ].join("\n\n");
+  }
+
   const liveCount = list.filter((i) => normalizeStatus(i.status) === "LIVE").length;
   const upcomingCount = list.filter((i) => normalizeStatus(i.status) === "UPCOMING").length;
   const finishedCount = list.filter((i) => normalizeStatus(i.status) === "FINISHED").length;
@@ -622,13 +646,17 @@ function buildCommandMenuHeader({ iconKey, fallbackIcon, title, list }) {
 }
 
 async function sendStreamCard(chatId, item) {
-  const mark = getStatusEmoji(item.status, item.title);
+  const mark = getStatusEmoji(item);
   const lines = [
     `${mark}  <b>${esc(toSmallCaps(item.title))}</b>`,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("STATE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.status))}</b>`,
-    `${tgEmoji("calendar", "📅")}  <b>${esc(toSmallCaps(item.timingLabel))}</b>  ⇢  <code>${esc(item.timingValue)}</code>`,
   ];
+
+  if (item.source !== "sportlink") {
+    lines.push(`${tgEmoji("pin", "📌")}  <b>${esc(toSmallCaps("STATE"))}</b>  ⇢  <b>${esc(toSmallCaps(item.status))}</b>`);
+  }
+
+  lines.push(`${tgEmoji("calendar", "📅")}  <b>${esc(toSmallCaps(item.timingLabel))}</b>  ⇢  <code>${esc(item.timingValue)}</code>`);
 
   if (!item.streams?.length) {
     lines.push(`━━━━━━━━━━━━━━━━━━━━`);
@@ -759,7 +787,7 @@ export default async function handler(req, res) {
         const filtered =
           statusFilter === "ALL"
             ? baseList
-            : baseList.filter((i) => normalizeStatus(i.status) === statusFilter);
+            : baseList.filter((i) => i.source !== "sportlink" && normalizeStatus(i.status) === statusFilter);
 
         await answerCallback(cq.id, toSmallCaps(`${statusFilter} (${filtered.length})`));
 
@@ -803,6 +831,7 @@ export default async function handler(req, res) {
         if (arg1 === "q" && arg2) {
           const ids = getSearchBucket(arg2);
           const list = ids.map((id) => all.find((x) => x.id === id)).filter(Boolean);
+          const showStatus = hasStatusFilter("all", list);
           await answerCallback(cq.id, toSmallCaps("OPTIONS"));
           await editMessage(
             chatId,
@@ -812,8 +841,9 @@ export default async function handler(req, res) {
               fallbackIcon: "🔎",
               title: "MATCH RESULTS",
               list,
+              showStatusCounts: showStatus,
             }),
-            buildStatusFilterKeyboard("all", list, arg2)
+            showStatus ? buildStatusFilterKeyboard("all", list, arg2) : buildSelectionKeyboard(list)
           );
           return res.status(200).json({ ok: true });
         }
@@ -837,12 +867,13 @@ export default async function handler(req, res) {
                 ? { iconKey: "sony", fallbackIcon: "📺", title: "SONY" }
                 : { iconKey: "searching", fallbackIcon: "🔎", title: "ALL STREAMS" };
 
+        const showStatus = hasStatusFilter(scope, list);
         await answerCallback(cq.id, toSmallCaps("OPTIONS"));
         await editMessage(
           chatId,
           messageId,
-          buildCommandMenuHeader({ ...meta, list }),
-          buildStatusFilterKeyboard(scope, list)
+          buildCommandMenuHeader({ ...meta, list, showStatusCounts: showStatus }),
+          showStatus ? buildStatusFilterKeyboard(scope, list) : buildSelectionKeyboard(list)
         );
         return res.status(200).json({ ok: true });
       }
@@ -928,6 +959,7 @@ export default async function handler(req, res) {
           fallbackIcon: "🌐",
           title: "WILLOW (IST)",
           list,
+          showStatusCounts: true,
         }),
         buildStatusFilterKeyboard("willow", list)
       );
@@ -948,8 +980,9 @@ export default async function handler(req, res) {
           fallbackIcon: "⭐",
           title: "STAR",
           list,
+          showStatusCounts: false,
         }),
-        buildStatusFilterKeyboard("star", list)
+        buildSelectionKeyboard(list)
       );
       return res.status(200).json({ ok: true });
     }
@@ -961,6 +994,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      const showStatus = hasStatusFilter("sony", list);
       await sendText(
         chatId,
         buildCommandMenuHeader({
@@ -968,8 +1002,9 @@ export default async function handler(req, res) {
           fallbackIcon: "📺",
           title: "SONY",
           list,
+          showStatusCounts: showStatus,
         }),
-        buildStatusFilterKeyboard("sony", list)
+        showStatus ? buildStatusFilterKeyboard("sony", list) : buildSelectionKeyboard(list)
       );
       return res.status(200).json({ ok: true });
     }
@@ -996,7 +1031,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    const bucketId = storeSearchBucket(matched);
+    const showStatus = hasStatusFilter("all", matched);
+    const bucketId = showStatus ? storeSearchBucket(matched) : "";
     await sendText(
       chatId,
       buildCommandMenuHeader({
@@ -1004,8 +1040,9 @@ export default async function handler(req, res) {
         fallbackIcon: "🔎",
         title: `RESULTS : ${query.toUpperCase()}`,
         list: matched,
+        showStatusCounts: showStatus,
       }),
-      buildStatusFilterKeyboard("all", matched, bucketId)
+      showStatus ? buildStatusFilterKeyboard("all", matched, bucketId) : buildSelectionKeyboard(matched)
     );
     return res.status(200).json({ ok: true });
   } catch (err) {
