@@ -10,6 +10,8 @@ const FEED_FANCODE_URL =
 const FEED_SONYLIV_URL =
   "https://raw.githubusercontent.com/drmlive/sliv-live-events/refs/heads/main/sonyliv.json";
 
+const BOT_DISPLAY_NAME = "CXC STREAM HELPER";
+
 const REQUIRED_CHANNELS = [
   {
     id: String(process.env.CRICXCRATE_CHANNEL_ID || "-1003215553013").trim(),
@@ -20,6 +22,16 @@ const REQUIRED_CHANNELS = [
     id: String(process.env.FOOTBALL_CHANNEL_ID || "-1003973221958").trim(),
     url: String(process.env.FOOTBALL_CHANNEL_URL || "https://t.me/+URLJF2-HXW44ZWU1").trim(),
     label: "FOOT X CRATE",
+  },
+  {
+    id: String(process.env.BACKUP_CHANNEL_ID || "-1003864703849").trim(),
+    url: String(process.env.BACKUP_CHANNEL_URL || "https://t.me/+GoOBUSd9oyM0OGI1").trim(),
+    label: "CRICXCRATE BACKUP",
+  },
+  {
+    id: String(process.env.LINKS_CHANNEL_ID || "-1004487952621").trim(),
+    url: String(process.env.LINKS_CHANNEL_URL || "https://t.me/+RJaondtgFDplNDFl").trim(),
+    label: "L1NKS",
   },
 ];
 
@@ -762,8 +774,8 @@ async function checkRequiredChannels(userId, bypassCache = false) {
 function getWelcomeMessageText(firstName = "") {
   const greetingName = String(firstName || "").trim();
   const titleLine = greetingName
-    ? `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps(`WELCOME ${greetingName.toUpperCase()} • CRICXCRATE`))}</b> ${tgEmoji("free", "🆓")}`
-    : `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps("WELCOME TO CRICXCRATE"))}</b> ${tgEmoji("free", "🆓")}`;
+    ? `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps(`WELCOME ${greetingName.toUpperCase()} • ${BOT_DISPLAY_NAME}`))}</b> ${tgEmoji("free", "🆓")}`
+    : `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps(`WELCOME TO ${BOT_DISPLAY_NAME}`))}</b> ${tgEmoji("free", "🆓")}`;
 
   const sportsRow = [
     `${tgEmoji("cricket", "🏏")} ${esc(toSmallCaps("CRICKET"))}`,
@@ -787,7 +799,7 @@ function getWelcomeMessageText(firstName = "") {
 
 function getHelpMessageText() {
   return [
-    `${tgEmoji("help", "ℹ️")}  <b>${esc(toSmallCaps("BOT GUIDE & COMMANDS"))}</b>`,
+    `${tgEmoji("help", "ℹ️")}  <b>${esc(toSmallCaps(`${BOT_DISPLAY_NAME} • GUIDE`))}</b>`,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
     `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("All Willow Cricket Matches (IST)"))}`,
     `${tgEmoji("fancode", "🔴")} ├ <code>/fancode</code> — ${esc(toSmallCaps("All FanCode Live & Upcoming Events"))}`,
@@ -989,7 +1001,7 @@ async function answerCallback(id, text = "", alert = false) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === "GET") return res.status(200).send("Bot Active");
+  if (req.method === "GET") return res.status(200).send(`${BOT_DISPLAY_NAME} Active`);
   if (req.method !== "POST") return res.status(405).end();
 
   try {
@@ -1375,3 +1387,4 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
+
