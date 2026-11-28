@@ -20,6 +20,7 @@ const REQUIRED_CHANNELS = [
 ];
 
 const REQUIRE_ALL_CHANNELS = true;
+const AUTO_DELETE_DELAY_MS = 5 * 60 * 1000;
 
 const CUSTOM_EMOJI_MAP = {
   live: "5264919878082509254",
@@ -371,7 +372,7 @@ async function loadPrimaryFeed() {
       network,
       title,
       status: "CHANNEL",
-      category: "",
+      category: "TV",
       tournament: "",
       timingLabel: "Valid Till",
       timingValue: entry?.cookie_expire_ist || "ACTIVE",
@@ -459,6 +460,7 @@ async function loadSportsFeed() {
 
 async function loadAllEntries(mode = "all") {
   if (mode === "willow") return loadEventsFeed();
+  if (mode === "tv") return loadPrimaryFeed();
   if (mode === "star") {
     const list = await loadPrimaryFeed();
     return list.filter((i) => i.network === "star");
@@ -471,6 +473,19 @@ async function loadAllEntries(mode = "all") {
         ? sp.value.filter((i) => i.searchText.includes("sony"))
         : []),
     ];
+  }
+  if (mode === "cricket") {
+    const [e, sp] = await Promise.allSettled([loadEventsFeed(), loadSportsFeed()]);
+    const events = e.status === "fulfilled" ? e.value : [];
+    const sports = sp.status === "fulfilled"
+      ? sp.value.filter((i) => i.searchText.includes("cricket"))
+      : [];
+    return [...events, ...sports];
+  }
+  if (mode === "fancode") {
+    const sp = await loadSportsFeed().catch(() => []);
+    const fc = sp.filter((i) => i.searchText.includes("fancode"));
+    return fc.length ? fc : sp;
   }
 
   const [p, e, sp] = await Promise.allSettled([
@@ -519,6 +534,17 @@ async function telegramApi(method, payload) {
   }
 }
 
+function scheduleDeleteMessage(chatId, messageId, delayMs = AUTO_DELETE_DELAY_MS) {
+  if (!chatId || !messageId) return;
+  const timer = setTimeout(() => {
+    telegramApi("deleteMessage", {
+      chat_id: chatId,
+      message_id: messageId,
+    }).catch(() => {});
+  }, delayMs);
+  if (typeof timer.unref === "function") timer.unref();
+}
+
 async function isMemberOfChannel(channelId, userId, bypassCache = false) {
   if (!channelId || !userId) return false;
 
@@ -562,6 +588,23 @@ async function checkRequiredChannels(userId, bypassCache = false) {
   };
 }
 
+function getBotCommandsGuideText() {
+  return [
+    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("BOT COMMANDS"))}</b>`,
+    `├ <code>/cricket</code> — ${esc(toSmallCaps("Live Cricket Matches & Multiple Stream Feeds"))}`,
+    `├ <code>/tv &lt;name&gt;</code> — ${esc(toSmallCaps("Search & Access Live TV Channels"))}`,
+    `├ <code>/fancode</code> — ${esc(toSmallCaps("FanCode Premium Sports Streams"))}`,
+    `├ <code>/willow</code> — ${esc(toSmallCaps("Ad-Free Willow Cricket Streams"))}`,
+    `├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Sports Broadcasts"))}`,
+    `└ <code>/help</code> — ${esc(toSmallCaps("Complete Bot Guide & Instructions"))}`,
+    ``,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ``,
+    `${tgEmoji("upcoming", "⏳")} <b>${esc(toSmallCaps("AUTOMATED STREAM PROTECTION"))}</b>`,
+    `${esc(toSmallCaps("All stream links are automatically deleted after 5 minutes to ensure temporary and secure access."))}`,
+  ].join("\n");
+}
+
 async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
   const targetList = missingChannels.length ? missingChannels : REQUIRED_CHANNELS;
   const listLines = targetList.map(
@@ -590,7 +633,7 @@ async function sendJoinPrompt(chatId, missingChannels, callbackQueryId = null) {
 }
 
 function hasStatusFilter(scope, list) {
-  if (scope === "willow" || scope === "star") return false;
+  if (scope === "willow" || scope === "star" || scope === "tv") return false;
   return list.some((i) => i.source !== "sportlink");
 }
 
@@ -686,7 +729,7 @@ async function sendStreamCard(chatId, item) {
       item.streams.length === 1 && s.label === "STREAM URL"
         ? `${tgEmoji("bulb", "🍿")} <b>STREAM URL:</b>`
         : `${tgEmoji("link", "🍿")} <b>${esc(String(s.label || "STREAM URL").toUpperCase())}:</b>`;
-    return `${streamHeading}\n${esc(s.line)}`;
+    return `${streamHeading}\n<code>${esc(s.line)}</code>`;
   });
 
   const cardText = [
@@ -697,9 +740,14 @@ async function sendStreamCard(chatId, item) {
     ...streamBlocks,
     ``,
     `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
+    `${tgEmoji("upcoming", "⏳")} Auto-deletes in 5 minutes.`,
   ].join("\n");
 
-  await sendText(chatId, cardText);
+  const sent = await sendText(chatId, cardText);
+  const sentMsgId = sent?.result?.message_id;
+  if (sentMsgId) {
+    scheduleDeleteMessage(chatId, sentMsgId, AUTO_DELETE_DELAY_MS);
+  }
 }
 
 async function sendText(chatId, text, replyMarkup = null) {
@@ -710,7 +758,7 @@ async function sendText(chatId, text, replyMarkup = null) {
     disable_web_page_preview: true,
   };
   if (replyMarkup) payload.reply_markup = replyMarkup;
-  await telegramApi("sendMessage", payload);
+  return await telegramApi("sendMessage", payload);
 }
 
 async function editMessage(chatId, messageId, text, replyMarkup = null) {
@@ -763,10 +811,7 @@ export default async function handler(req, res) {
           [
             `${tgEmoji("tick", "✅")}  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
             `━━━━━━━━━━━━━━━━━━━━━━━━`,
-            `${tgEmoji("willow", "🌐")}  <code>/Willow</code>`,
-            `${tgEmoji("star", "⭐")}  <code>/Star</code>`,
-            `${tgEmoji("sony", "📺")}  <code>/Sony</code>`,
-            `${tgEmoji("searching", "🔎")}  <code>/Match name</code>  |  <code>/Tournament</code>`,
+            getBotCommandsGuideText(),
           ].join("\n\n")
         );
         return res.status(200).json({ ok: true });
@@ -796,9 +841,16 @@ export default async function handler(req, res) {
           } else if (val === "star") {
             baseList = all.filter((i) => i.network === "star");
             headerTitle = "STAR";
-          } else if (val === "sony") {
+          } else if (val === "sony" || val === "sonyliv") {
             baseList = all.filter((i) => i.network === "sony" || i.searchText.includes("sony"));
-            headerTitle = "SONY";
+            headerTitle = "SONYLIV";
+          } else if (val === "cricket") {
+            baseList = all.filter((i) => i.network === "willow" || i.searchText.includes("cricket"));
+            headerTitle = "CRICKET";
+          } else if (val === "fancode") {
+            const fc = all.filter((i) => i.searchText.includes("fancode"));
+            baseList = fc.length ? fc : all.filter((i) => i.source === "sports");
+            headerTitle = "FANCODE";
           } else {
             baseList = all;
             headerTitle = "ALL STREAMS";
@@ -880,18 +932,29 @@ export default async function handler(req, res) {
             ? all.filter((i) => i.network === "willow")
             : scope === "star"
               ? all.filter((i) => i.network === "star")
-              : scope === "sony"
+              : scope === "sony" || scope === "sonyliv"
                 ? all.filter((i) => i.network === "sony" || i.searchText.includes("sony"))
-                : all;
+                : scope === "cricket"
+                  ? all.filter((i) => i.network === "willow" || i.searchText.includes("cricket"))
+                  : scope === "fancode"
+                    ? (() => {
+                        const fc = all.filter((i) => i.searchText.includes("fancode"));
+                        return fc.length ? fc : all.filter((i) => i.source === "sports");
+                      })()
+                    : all;
 
         const meta =
           scope === "willow"
             ? { iconKey: "willow", fallbackIcon: "🌐", title: "WILLOW (IST)" }
             : scope === "star"
               ? { iconKey: "star", fallbackIcon: "⭐", title: "STAR" }
-              : scope === "sony"
-                ? { iconKey: "sony", fallbackIcon: "📺", title: "SONY" }
-                : { iconKey: "searching", fallbackIcon: "🔎", title: "ALL STREAMS" };
+              : scope === "sony" || scope === "sonyliv"
+                ? { iconKey: "sony", fallbackIcon: "📺", title: "SONYLIV" }
+                : scope === "cricket"
+                  ? { iconKey: "cricket", fallbackIcon: "🏏", title: "CRICKET" }
+                  : scope === "fancode"
+                    ? { iconKey: "live", fallbackIcon: "🔴", title: "FANCODE" }
+                    : { iconKey: "searching", fallbackIcon: "🔎", title: "ALL STREAMS" };
 
         const showStatus = hasStatusFilter(scope, list);
         await answerCallback(cq.id, toSmallCaps("OPTIONS"));
@@ -956,18 +1019,87 @@ export default async function handler(req, res) {
     }
 
     if (cmd === "/start" || cmd === "/help") {
-      const help = [
-        `${tgEmoji("speaker", "📢")}  <b>${esc(toSmallCaps("CRICXCRATE STREAM BOT"))}</b>  ${tgEmoji("free", "🆓")}`,
-        `━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `${tgEmoji("willow", "🌐")}  <code>/Willow</code>`,
-        `${tgEmoji("star", "⭐")}  <code>/Star</code>`,
-        `${tgEmoji("sony", "📺")}  <code>/Sony</code>`,
-        `${tgEmoji("searching", "🔎")}  <code>/Match name</code>  |  <code>/Tournament</code>`,
-        `━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("SEND ANY COMMAND ABOVE"))}`,
-      ].join("\n\n");
+      await sendText(chatId, getBotCommandsGuideText());
+      return res.status(200).json({ ok: true });
+    }
 
-      await sendText(chatId, help);
+    if (cmd === "/cricket" && !extra) {
+      const list = await loadAllEntries("cricket");
+      if (!list.length) {
+        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        return res.status(200).json({ ok: true });
+      }
+
+      await sendText(
+        chatId,
+        buildCommandMenuHeader({
+          iconKey: "cricket",
+          fallbackIcon: "🏏",
+          title: "CRICKET",
+          list,
+          showStatusCounts: true,
+        }),
+        buildStatusFilterKeyboard("cricket", list)
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    if (cmd === "/fancode" && !extra) {
+      const list = await loadAllEntries("fancode");
+      if (!list.length) {
+        await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
+        return res.status(200).json({ ok: true });
+      }
+
+      await sendText(
+        chatId,
+        buildCommandMenuHeader({
+          iconKey: "live",
+          fallbackIcon: "🔴",
+          title: "FANCODE",
+          list,
+          showStatusCounts: true,
+        }),
+        buildStatusFilterKeyboard("fancode", list)
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    if (cmd === "/tv") {
+      const allTv = await loadAllEntries("tv");
+      const q = extra.toLowerCase();
+      const matchedTv = q
+        ? allTv.filter((item) => q.split(/\s+/).every((t) => item.searchText.includes(t)))
+        : allTv;
+
+      if (!matchedTv.length) {
+        await sendText(
+          chatId,
+          [
+            `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps(`NO TV CHANNELS : ${extra.toUpperCase()}`))}</b>`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY /tv OR ANOTHER CHANNEL NAME"))}`,
+          ].join("\n\n")
+        );
+        return res.status(200).json({ ok: true });
+      }
+
+      if (matchedTv.length === 1) {
+        await sendStreamCard(chatId, matchedTv[0]);
+        return res.status(200).json({ ok: true });
+      }
+
+      await sendText(
+        chatId,
+        buildCommandMenuHeader({
+          iconKey: "sony",
+          fallbackIcon: "📺",
+          title: q ? `TV : ${extra.toUpperCase()}` : "LIVE TV CHANNELS",
+          list: matchedTv,
+          showStatusCounts: false,
+        }),
+        buildSelectionKeyboard(matchedTv)
+      );
       return res.status(200).json({ ok: true });
     }
 
@@ -1013,7 +1145,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    if (cmd === "/sony" && !extra) {
+    if ((cmd === "/sony" || cmd === "/sonyliv") && !extra) {
       const list = await loadAllEntries("sony");
       if (!list.length) {
         await sendText(chatId, `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps("NOTHING AVAILABLE RIGHT NOW"))}</b>`);
@@ -1026,7 +1158,7 @@ export default async function handler(req, res) {
         buildCommandMenuHeader({
           iconKey: "sony",
           fallbackIcon: "📺",
-          title: "SONY",
+          title: "SONYLIV",
           list,
           showStatusCounts: showStatus,
         }),
@@ -1046,7 +1178,7 @@ export default async function handler(req, res) {
         [
           `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
           `━━━━━━━━━━━━━━━━━━━━━━━━`,
-          `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
+          `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /help"))}`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
