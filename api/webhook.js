@@ -30,6 +30,8 @@ const CUSTOM_EMOJI_MAP = {
   willow: "5375177250553487549",
   cricket: "5346089086325130313",
   football: "5863894806001881819",
+  fancode: "5260291556899831755",
+  help: "6053062818033309122",
   questionMark: "5188540541922480562",
   alert: "6257780484281997093",
   link: "6275878213746955453",
@@ -591,17 +593,42 @@ async function checkRequiredChannels(userId, bypassCache = false) {
 function getBotCommandsGuideText() {
   return [
     `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("BOT COMMANDS"))}</b>`,
-    `├ <code>/cricket</code> — ${esc(toSmallCaps("Live Cricket Matches & Multiple Stream Feeds"))}`,
-    `├ <code>/tv &lt;name&gt;</code> — ${esc(toSmallCaps("Search & Access Live TV Channels"))}`,
-    `├ <code>/fancode</code> — ${esc(toSmallCaps("FanCode Premium Sports Streams"))}`,
-    `├ <code>/willow</code> — ${esc(toSmallCaps("Ad-Free Willow Cricket Streams"))}`,
-    `├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Sports Broadcasts"))}`,
-    `└ <code>/help</code> — ${esc(toSmallCaps("Complete Bot Guide & Instructions"))}`,
+    `${tgEmoji("cricket", "🏏")} ├ <code>/cricket</code> — ${esc(toSmallCaps("Live Cricket Matches & Multiple Stream Feeds"))}`,
+    `${tgEmoji("sony", "📺")} ├ <code>/tv &lt;name&gt;</code> — ${esc(toSmallCaps("Search & Access Live TV Channels"))}`,
+    `${tgEmoji("fancode", "🔴")} ├ <code>/fancode</code> — ${esc(toSmallCaps("FanCode Premium Sports Streams"))}`,
+    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("Ad-Free Willow Cricket Streams"))}`,
+    `${tgEmoji("star", "⭐")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Sports Broadcasts"))}`,
+    `${tgEmoji("help", "ℹ️")} └ <code>/help</code> — ${esc(toSmallCaps("Complete Bot Guide & Instructions"))}`,
     ``,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ``,
     `${tgEmoji("upcoming", "⏳")} <b>${esc(toSmallCaps("AUTOMATED STREAM PROTECTION"))}</b>`,
     `${esc(toSmallCaps("All stream links are automatically deleted after 5 minutes to ensure temporary and secure access."))}`,
+  ].join("\n");
+}
+
+function getWelcomeMessageText(firstName = "") {
+  const greetingName = String(firstName || "").trim();
+  const headerLine = greetingName
+    ? `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps(`WELCOME ${greetingName.toUpperCase()} • CRICXCRATE`))}</b> ${tgEmoji("free", "🆓")}`
+    : `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps("WELCOME TO CRICXCRATE STREAM BOT"))}</b> ${tgEmoji("free", "🆓")}`;
+
+  const channelIconsRow = [
+    `${tgEmoji("cricket", "🏏")} ${esc(toSmallCaps("CRICKET"))}`,
+    `${tgEmoji("football", "⚽")} ${esc(toSmallCaps("FOOTBALL"))}`,
+    `${tgEmoji("fancode", "🔴")} ${esc(toSmallCaps("FANCODE"))}`,
+    `${tgEmoji("willow", "🌐")} ${esc(toSmallCaps("WILLOW"))}`,
+    `${tgEmoji("sony", "📺")} ${esc(toSmallCaps("SONY"))}`,
+    `${tgEmoji("star", "⭐")} ${esc(toSmallCaps("STAR"))}`,
+  ].join("  •  ");
+
+  return [
+    headerLine,
+    `${channelIconsRow}`,
+    ``,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ``,
+    getBotCommandsGuideText(),
   ].join("\n");
 }
 
@@ -811,7 +838,7 @@ export default async function handler(req, res) {
           [
             `${tgEmoji("tick", "✅")}  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
             `━━━━━━━━━━━━━━━━━━━━━━━━`,
-            getBotCommandsGuideText(),
+            getWelcomeMessageText(cq?.from?.first_name || ""),
           ].join("\n\n")
         );
         return res.status(200).json({ ok: true });
@@ -953,7 +980,7 @@ export default async function handler(req, res) {
                 : scope === "cricket"
                   ? { iconKey: "cricket", fallbackIcon: "🏏", title: "CRICKET" }
                   : scope === "fancode"
-                    ? { iconKey: "live", fallbackIcon: "🔴", title: "FANCODE" }
+                    ? { iconKey: "fancode", fallbackIcon: "🔴", title: "FANCODE" }
                     : { iconKey: "searching", fallbackIcon: "🔎", title: "ALL STREAMS" };
 
         const showStatus = hasStatusFilter(scope, list);
@@ -1018,8 +1045,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    if (cmd === "/start" || cmd === "/help") {
-      await sendText(chatId, getBotCommandsGuideText());
+    if (cmd === "/start") {
+      await sendText(chatId, getWelcomeMessageText(msg?.from?.first_name || ""));
+      return res.status(200).json({ ok: true });
+    }
+
+    if (cmd === "/help") {
+      await sendText(
+        chatId,
+        [
+          `${tgEmoji("help", "ℹ️")} <b>${esc(toSmallCaps("BOT GUIDE & COMMANDS"))}</b>`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━`,
+          getBotCommandsGuideText(),
+        ].join("\n\n")
+      );
       return res.status(200).json({ ok: true });
     }
 
@@ -1054,7 +1093,7 @@ export default async function handler(req, res) {
       await sendText(
         chatId,
         buildCommandMenuHeader({
-          iconKey: "live",
+          iconKey: "fancode",
           fallbackIcon: "🔴",
           title: "FANCODE",
           list,
