@@ -759,32 +759,13 @@ async function checkRequiredChannels(userId, bypassCache = false) {
   };
 }
 
-function getBotCommandsGuideText() {
-  return [
-    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("COMMANDS & GUIDE"))}</b>`,
-    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("Willow Cricket Matches"))}`,
-    `${tgEmoji("fancode", "🔴")} ├ <code>/fancode</code> — ${esc(toSmallCaps("FanCode Live & Upcoming"))}`,
-    `${tgEmoji("live", "📺")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Matches"))}`,
-    `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("Sony TV Channels"))}`,
-    `${tgEmoji("star", "⭐")} ├ <code>/star</code> — ${esc(toSmallCaps("Star Sports TV Channels"))}`,
-    `${tgEmoji("searching", "🔎")} ├ <code>/channel &amp; sport</code> — ${esc(toSmallCaps("Ex: /star sports 1 hindi hd, /bein, /fubo"))}`,
-    `${tgEmoji("cricket", "🏏")} └ <code>/team &amp; event</code> — ${esc(toSmallCaps("Search Any Match, Team or Tournament"))}`,
-    ``,
-    `━━━━━━━━━━━━━━━━━━━━━━━━`,
-    ``,
-    `${tgEmoji("bulb", "💡")} <b>${esc(toSmallCaps("HOW TO WATCH"))}</b>`,
-    `${esc(toSmallCaps("Tap any stream link to copy & open in NS Player or VLC."))}`,
-    `${esc(toSmallCaps("Sending a new stream card automatically removes the previous one."))}`,
-  ].join("\n");
-}
-
 function getWelcomeMessageText(firstName = "") {
   const greetingName = String(firstName || "").trim();
-  const headerLine = greetingName
+  const titleLine = greetingName
     ? `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps(`WELCOME ${greetingName.toUpperCase()} • CRICXCRATE`))}</b> ${tgEmoji("free", "🆓")}`
     : `${tgEmoji("speaker", "📢")} <b>${esc(toSmallCaps("WELCOME TO CRICXCRATE"))}</b> ${tgEmoji("free", "🆓")}`;
 
-  const channelIconsRow = [
+  const sportsRow = [
     `${tgEmoji("cricket", "🏏")} ${esc(toSmallCaps("CRICKET"))}`,
     `${tgEmoji("football", "⚽")} ${esc(toSmallCaps("FOOTBALL"))}`,
     `${tgEmoji("fancode", "🔴")} ${esc(toSmallCaps("FANCODE"))}`,
@@ -794,12 +775,38 @@ function getWelcomeMessageText(firstName = "") {
   ].join("  •  ");
 
   return [
-    headerLine,
-    `${channelIconsRow}`,
+    titleLine,
+    `${sportsRow}`,
     ``,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    getBotCommandsGuideText(),
+    `${tgEmoji("bulb", "💡")}  ${esc(toSmallCaps("TYPE /help FOR FULL COMMANDS & PLAYER GUIDE"))}`,
+    `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("QUICK START: /willow, /fancode, /sonyliv, /sony, /star"))}`,
+  ].join("\n");
+}
+
+function getHelpMessageText() {
+  return [
+    `${tgEmoji("help", "ℹ️")}  <b>${esc(toSmallCaps("BOT GUIDE & COMMANDS"))}</b>`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("All Willow Cricket Matches (IST)"))}`,
+    `${tgEmoji("fancode", "🔴")} ├ <code>/fancode</code> — ${esc(toSmallCaps("All FanCode Live & Upcoming Events"))}`,
+    `${tgEmoji("live", "📺")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("All SonyLIV Broadcasts & Matches"))}`,
+    `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("All Sony Network TV Channels"))}`,
+    `${tgEmoji("star", "⭐")} ├ <code>/star</code> — ${esc(toSmallCaps("All Star Sports TV Channels"))}`,
+    `${tgEmoji("searching", "🔎")} ├ <code>/channel &amp; sport</code> — ${esc(toSmallCaps("Ex: /star sports 1 hindi hd, /bein, /fubo"))}`,
+    `${tgEmoji("cricket", "🏏")} └ <code>/team &amp; event</code> — ${esc(toSmallCaps("Search Any Match, Team or Tournament"))}`,
+    ``,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ``,
+    `${tgEmoji("bulb", "💡")}  <b>${esc(toSmallCaps("CHANNEL SEARCH TIP"))}</b>`,
+    `${esc(toSmallCaps("Searching a channel like /bein or /fubo isolates matching channel streams when available."))}`,
+    `${esc(toSmallCaps("Use LIVE, UPCOMING, FINISHED or ALL buttons to filter match lists quickly."))}`,
+    ``,
+    `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ``,
+    `${tgEmoji("link", "🍿")}  <b>${esc(toSmallCaps("HOW TO PLAY"))}</b>`,
+    `${esc(toSmallCaps("Tap any stream link on a card to copy it, then paste and open it in NS Player or VLC."))}`,
   ].join("\n");
 }
 
@@ -1216,14 +1223,7 @@ export default async function handler(req, res) {
     }
 
     if (cmd === "/help") {
-      await sendText(
-        chatId,
-        [
-          `${tgEmoji("help", "ℹ️")} <b>${esc(toSmallCaps("BOT GUIDE"))}</b>`,
-          `━━━━━━━━━━━━━━━━━━━━━━━━`,
-          getBotCommandsGuideText(),
-        ].join("\n\n")
-      );
+      await sendText(chatId, getHelpMessageText());
       return res.status(200).json({ ok: true });
     }
 
