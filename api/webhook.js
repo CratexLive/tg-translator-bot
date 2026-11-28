@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 const FEED_PRIMARY_URL = "https://sportlink-tv11.pages.dev/Data.json";
 const FEED_EVENTS_URL =
   "https://raw.githubusercontent.com/srhady/willow-event/refs/heads/main/live_sports.json";
-const FEED_SONY_URL =
-  "https://raw.githubusercontent.com/doctor-8trange/zyphora/refs/heads/main/data/sony.json";
+const FEED_SPORTS_URL =
+  "https://raw.githubusercontent.com/sm-monirulislam/Upcoming-and-Live-Sports-Data/main/Sports_data.json";
 
 const REQUIRED_CHANNELS = [
   {
@@ -133,7 +133,7 @@ function convertBdtToIst(bdtStr) {
   return `${prefix} • ${istTimePart}`;
 }
 
-function buildDirectPlayerLine({ streamUrl, cookie = "", keys = [] }) {
+function buildDirectPlayerLine({ streamUrl, cookie = "", keys = [], userAgent = "", referer = "" }) {
   const cleanUrl = String(streamUrl || "").trim();
   if (!cleanUrl) return "";
 
@@ -147,15 +147,23 @@ function buildDirectPlayerLine({ streamUrl, cookie = "", keys = [] }) {
 
   const parts = [];
   if (rawCookie) parts.push(`Cookie=${rawCookie}`);
-  parts.push("User-Agent=Virat");
-  parts.push("Referer=https://www.jiotv.com/");
-  parts.push("Origin=https://www.jiotv.com/");
+  if (userAgent) {
+    parts.push(`User-Agent=${String(userAgent).trim()}`);
+  } else if (rawCookie) {
+    parts.push("User-Agent=Virat");
+  }
+  if (referer) {
+    parts.push(`Referer=${String(referer).trim()}`);
+  } else if (rawCookie) {
+    parts.push("Referer=https://www.jiotv.com/");
+    parts.push("Origin=https://www.jiotv.com/");
+  }
   if (cleanKeys.length) {
     parts.push("drmScheme=clearkey");
     parts.push(`drmLicense=${cleanKeys.join(",")}`);
   }
 
-  return `${urlWithQuery}|${parts.join("&")}`;
+  return parts.length ? `${urlWithQuery}|${parts.join("&")}` : urlWithQuery;
 }
 
 function buildEventPlayerLine(streamUrl, drmKey = "") {
@@ -192,44 +200,25 @@ function extractEventStreams(match) {
   return streams;
 }
 
-function extractSonyStreams(entry) {
+function extractMatchStreams(rawStreams) {
+  const list = Array.isArray(rawStreams) ? rawStreams : [];
   const streams = [];
-  const audioList = Array.isArray(entry?.multiple_audio_links) ? entry.multiple_audio_links : [];
 
-  for (const aud of audioList) {
-    const lang = String(aud?.language || aud?.lang_code || "STREAM").trim();
-    const d = aud?.data || {};
-    const playbackUrl = String(d?.Playback_videoURL || "").trim();
+  for (const s of list) {
+    const streamUrl = String(s?.stream_url || "").trim();
+    if (!streamUrl) continue;
 
-    if (playbackUrl) {
-      streams.push({
-        label: `${lang} • MASTER`,
-        line: playbackUrl,
-      });
-    }
-
-    const m3u8Lines = String(d?.auto_streams || "")
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith("#"));
-
-    if (m3u8Lines.length) {
-      const bestLine = m3u8Lines[m3u8Lines.length - 1];
-      if (bestLine && bestLine !== playbackUrl) {
-        streams.push({
-          label: `${lang} • AUTO`,
-          line: bestLine,
-        });
-      }
-    }
-  }
-
-  const trailerUrl = String(entry?.stream_info?.platformVariants?.trailerUrl || "").trim();
-  if (!streams.length && trailerUrl) {
-    streams.push({
-      label: "PREVIEW",
-      line: trailerUrl,
+    const label = String(s?.channel_name || "STREAM").trim();
+    const keys = s?.kid && s?.key ? [`${String(s.kid).trim()}:${String(s.key).trim()}`] : [];
+    const line = buildDirectPlayerLine({
+      streamUrl,
+      keys,
+      userAgent: s?.user_agent || "",
+      referer: s?.referer || "",
     });
+    if (!line) continue;
+
+    streams.push({ label, line });
   }
 
   return streams;
@@ -328,45 +317,40 @@ async function loadEventsFeed() {
   return setCached("feed:events", items);
 }
 
-async function loadSonyFeed() {
-  const cached = getCached("feed:sony");
+async function loadSportsFeed() {
+  const cached = getCached("feed:sports");
   if (cached) return cached;
 
-  const data = await fetchJson(FEED_SONY_URL);
-  const liveList = Array.isArray(data?.data) ? data.data : [];
-  const upcomingList = Array.isArray(data?.upcoming) ? data.upcoming : [];
-
-  const combined = [
-    ...liveList.map((entry) => ({ entry, status: "LIVE" })),
-    ...upcomingList.map((entry) => ({ entry, status: "UPCOMING" })),
-  ];
-
+  const data = await fetchJson(FEED_SPORTS_URL);
+  const rawMatches = Array.isArray(data?.matches) ? data.matches : [];
   const items = [];
-  for (const { entry, status } of combined) {
-    const info = entry?.video_info || {};
-    const mainTitle = String(info?.title || "").trim();
-    const epTitle = String(info?.episodeTitle || "").trim();
-    if (!mainTitle) continue;
 
-    const title = epTitle && epTitle !== mainTitle ? `${mainTitle} - ${epTitle}` : mainTitle;
-    const genre = Array.isArray(info?.genres) ? info.genres.join(" ") : "";
-    const startTime = String(entry?.air_dates?.contractStartDate || "").trim();
-    const streams = extractSonyStreams(entry);
-    const id = makeId(`s|${entry?.contentId || ""}|${title}|${status}`);
+  for (const m of rawMatches) {
+    const info = m?.eventInfo || {};
+    const title = String(m?.event_name || `${info?.teamA || ""} vs ${info?.teamB || ""}`).trim();
+    if (!title) continue;
 
+    const streams = extractMatchStreams(m?.streams);
+    const status = String(m?.status || "UPCOMING").trim().toUpperCase();
+    const category = String(m?.Category || "").trim();
+    const tournament = String(info?.eventName || "").trim();
+    const startTime = String(info?.startTime || "").trim();
+    const id = makeId(`sp|${title}|${startTime}`);
+
+    const streamText = streams.map((s) => s.label).join(" ");
     items.push({
       id,
-      network: "sony",
+      network: "sports",
       title,
       status,
       timingLabel: "START TIME",
       timingValue: startTime || "TBA",
       streams,
-      searchText: `${entry?.contentId || ""} ${title} ${info?.shortDescription || ""} ${genre} ${status}`.toLowerCase(),
+      searchText: `${title} ${category} ${tournament} ${info?.teamA || ""} ${info?.teamB || ""} ${streamText} ${status}`.toLowerCase(),
     });
   }
 
-  return setCached("feed:sony", items);
+  return setCached("feed:sports", items);
 }
 
 async function loadAllEntries(mode = "all") {
@@ -376,22 +360,24 @@ async function loadAllEntries(mode = "all") {
     return list.filter((i) => i.network === "star");
   }
   if (mode === "sony") {
-    const [p, s] = await Promise.allSettled([loadPrimaryFeed(), loadSonyFeed()]);
+    const [p, sp] = await Promise.allSettled([loadPrimaryFeed(), loadSportsFeed()]);
     return [
       ...(p.status === "fulfilled" ? p.value.filter((i) => i.network === "sony") : []),
-      ...(s.status === "fulfilled" ? s.value : []),
+      ...(sp.status === "fulfilled"
+        ? sp.value.filter((i) => i.searchText.includes("sony"))
+        : []),
     ];
   }
 
-  const [p, e, s] = await Promise.allSettled([
+  const [p, e, sp] = await Promise.allSettled([
     loadPrimaryFeed(),
     loadEventsFeed(),
-    loadSonyFeed(),
+    loadSportsFeed(),
   ]);
   return [
     ...(p.status === "fulfilled" ? p.value : []),
     ...(e.status === "fulfilled" ? e.value : []),
-    ...(s.status === "fulfilled" ? s.value : []),
+    ...(sp.status === "fulfilled" ? sp.value : []),
   ];
 }
 
@@ -729,3 +715,4 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, error: err.message });
   }
 }
+
