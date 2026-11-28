@@ -24,7 +24,7 @@ const REQUIRED_CHANNELS = [
 ];
 
 const REQUIRE_ALL_CHANNELS = true;
-const AUTO_DELETE_DELAY_MS = 5 * 60 * 1000;
+const AUTO_DELETE_DELAY_SEC = 30;
 
 const CUSTOM_EMOJI_MAP = {
   live: "5264919878082509254",
@@ -709,15 +709,49 @@ async function telegramApi(method, payload) {
   }
 }
 
-function scheduleDeleteMessage(chatId, messageId, delayMs = AUTO_DELETE_DELAY_MS) {
-  if (!chatId || !messageId) return;
+function getWebhookTargetUrl(req) {
+  if (process.env.BOT_WEBHOOK_URL) {
+    return String(process.env.BOT_WEBHOOK_URL).trim();
+  }
+  const host = String(req?.headers?.["x-forwarded-host"] || req?.headers?.host || "").trim();
+  const proto = String(req?.headers?.["x-forwarded-proto"] || "https").trim();
+  if (!host) return "";
+  return `${proto}://${host}${req?.url?.split("?")[0] || "/"}`;
+}
+
+async function scheduleDeleteMessage(chatId, messageId, req = null, delaySec = AUTO_DELETE_DELAY_SEC) {
+  if (!chatId || !messageId) return false;
+
+  const qstashToken = String(process.env.QSTASH_TOKEN || "").trim();
+  const qstashUrl = String(
+    process.env.QSTASH_URL || "https://qstash-eu-central-1.upstash.io"
+  ).trim().replace(/\/+$/, "");
+  const callbackUrl = getWebhookTargetUrl(req);
+
+  if (qstashToken && callbackUrl) {
+    const sep = callbackUrl.includes("?") ? "&" : "?";
+    const destination = `${callbackUrl}${sep}action=delete`;
+    const res = await fetch(`${qstashUrl}/v2/publish/${encodeURIComponent(destination)}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${qstashToken}`,
+        "Content-Type": "application/json",
+        "Upstash-Delay": `${delaySec}s`,
+      },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+    }).catch(() => null);
+
+    if (res?.ok) return true;
+  }
+
   const timer = setTimeout(() => {
     telegramApi("deleteMessage", {
       chat_id: chatId,
       message_id: messageId,
     }).catch(() => {});
-  }, delayMs);
+  }, delaySec * 1000);
   if (typeof timer.unref === "function") timer.unref();
+  return false;
 }
 
 async function isMemberOfChannel(channelId, userId, bypassCache = false) {
@@ -776,7 +810,7 @@ function getBotCommandsGuideText() {
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ``,
     `${tgEmoji("upcoming", "⏳")} <b>${esc(toSmallCaps("AUTOMATED STREAM PROTECTION"))}</b>`,
-    `${esc(toSmallCaps("All stream links are automatically deleted after 5 minutes to ensure temporary and secure access."))}`,
+    `${esc(toSmallCaps(`All stream links are automatically deleted after ${AUTO_DELETE_DELAY_SEC} seconds to ensure temporary and secure access.`))}`,
   ].join("\n");
 }
 
@@ -905,7 +939,7 @@ function buildCommandMenuHeader({ iconKey, fallbackIcon, title, list, showStatus
   ].join("\n\n");
 }
 
-async function sendStreamCard(chatId, item) {
+async function sendStreamCard(chatId, item, req = null) {
   const leadMark = getCardLeadEmoji(item);
   const titleLine = `${leadMark} <b>${esc(String(item.title || "").toUpperCase())}</b>`;
   const timeLine = `${tgEmoji("calendar", "🕒")} <b>${esc(item.timingLabel || "Date & Time")}:</b> ${esc(item.timingValue || "TBA")}`;
@@ -940,13 +974,13 @@ async function sendStreamCard(chatId, item) {
     ...streamBlocks,
     ``,
     `${tgEmoji("bulb", "💡")} Copy link & open in NS Player / VLC to play stream.`,
-    `${tgEmoji("upcoming", "⏳")} Auto-deletes in 5 minutes.`,
+    `${tgEmoji("upcoming", "⏳")} Auto-deletes in ${AUTO_DELETE_DELAY_SEC} seconds.`,
   ].join("\n");
 
   const sent = await sendText(chatId, cardText);
   const sentMsgId = sent?.result?.message_id;
   if (sentMsgId) {
-    scheduleDeleteMessage(chatId, sentMsgId, AUTO_DELETE_DELAY_MS);
+    await scheduleDeleteMessage(chatId, sentMsgId, req, AUTO_DELETE_DELAY_SEC).catch(() => {});
   }
 }
 
@@ -989,6 +1023,18 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   try {
+    const queryAction = String(req.query?.action || "").toLowerCase();
+    if (queryAction === "delete") {
+      const { chat_id: chatId, message_id: messageId } = req.body || {};
+      if (chatId && messageId) {
+        await telegramApi("deleteMessage", {
+          chat_id: chatId,
+          message_id: messageId,
+        }).catch(() => {});
+      }
+      return res.status(200).json({ ok: true, deleted: true });
+    }
+
     const update = req.body || {};
 
     if (update.callback_query) {
@@ -1182,7 +1228,7 @@ export default async function handler(req, res) {
         }
 
         await answerCallback(cq.id, toSmallCaps(selected.title));
-        await sendStreamCard(chatId, selected);
+        await sendStreamCard(chatId, selected, req);
         return res.status(200).json({ ok: true });
       }
 
@@ -1297,7 +1343,7 @@ export default async function handler(req, res) {
       }
 
       if (matchedTv.length === 1) {
-        await sendStreamCard(chatId, matchedTv[0]);
+        await sendStreamCard(chatId, matchedTv[0], req);
         return res.status(200).json({ ok: true });
       }
 
@@ -1397,7 +1443,7 @@ export default async function handler(req, res) {
     }
 
     if (matched.length === 1) {
-      await sendStreamCard(chatId, matched[0]);
+      await sendStreamCard(chatId, matched[0], req);
       return res.status(200).json({ ok: true });
     }
 
