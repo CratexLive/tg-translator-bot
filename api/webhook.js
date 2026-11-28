@@ -24,7 +24,12 @@ const REQUIRE_ALL_CHANNELS = true;
 const CUSTOM_EMOJI_MAP = {
   live: "5264919878082509254",
   upcoming: "6071317996704370355",
-  ended: "",
+  ended: "5042040865313260562",
+  finish: "5042040865313260562",
+  willow: "5375177250553487549",
+  cricket: "5346089086325130313",
+  football: "5863894806001881819",
+  questionMark: "5188540541922480562",
   alert: "6257780484281997093",
   link: "6275878213746955453",
   pin: "5397782960512444700",
@@ -619,7 +624,7 @@ export default async function handler(req, res) {
           [
             `${tgEmoji("tick", "✅")}  <b>${esc(toSmallCaps("VERIFIED"))}</b>`,
             `━━━━━━━━━━━━━━━━━━━━`,
-            `${tgEmoji("globe", "🌐")}  <code>/Willow</code>`,
+            `${tgEmoji("willow", "🌐")}  <code>/Willow</code>`,
             `${tgEmoji("star", "⭐")}  <code>/Star</code>`,
             `${tgEmoji("sony", "📺")}  <code>/Sony</code>`,
             `${tgEmoji("searching", "🔎")}  <code>/Match name</code>  |  <code>/Tournament</code>`,
@@ -683,7 +688,7 @@ export default async function handler(req, res) {
       const help = [
         `${tgEmoji("speaker", "📢")}  <b>${esc(toSmallCaps("CRICXCRATE STREAM BOT"))}</b>  ${tgEmoji("free", "🆓")}`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `${tgEmoji("globe", "🌐")}  <code>/Willow</code>`,
+        `${tgEmoji("willow", "🌐")}  <code>/Willow</code>`,
         `${tgEmoji("star", "⭐")}  <code>/Star</code>`,
         `${tgEmoji("sony", "📺")}  <code>/Sony</code>`,
         `${tgEmoji("searching", "🔎")}  <code>/Match name</code>  |  <code>/Tournament</code>`,
@@ -706,7 +711,7 @@ export default async function handler(req, res) {
       const upcomingCount = list.filter((i) => i.status === "UPCOMING").length;
 
       const head = [
-        `${tgEmoji("globe", "🌐")}  <b>${esc(toSmallCaps("WILLOW (IST)"))}</b>`,
+        `${tgEmoji("willow", "🌐")}  <b>${esc(toSmallCaps("WILLOW (IST)"))}</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
         `${tgEmoji("live", "🔺")}  <b>${esc(toSmallCaps("LIVE"))}</b>  ⇢  <b>${liveCount}</b>    |    ${tgEmoji("upcoming", "⏳")}  <b>${esc(toSmallCaps("UPCOMING"))}</b>  ⇢  <b>${upcomingCount}</b>`,
         `${tgEmoji("pointDown", "👇🏻")}  ${esc(toSmallCaps("TAP ONE BELOW"))}`,
