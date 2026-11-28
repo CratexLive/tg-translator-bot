@@ -789,13 +789,13 @@ async function checkRequiredChannels(userId, bypassCache = false) {
 
 function getBotCommandsGuideText() {
   return [
-    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("COMMANDS"))}</b>`,
-    `${tgEmoji("sony", "📺")} ├ <code>/&lt;channel&gt;</code> — ${esc(toSmallCaps("Ex: /bein, /fubo, /star sports 1 hindi hd"))}`,
-    `${tgEmoji("cricket", "🏏")} ├ <code>/&lt;team or event&gt;</code> — ${esc(toSmallCaps("Search match or tournament"))}`,
-    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("Willow Cricket"))}`,
-    `${tgEmoji("fancode", "🔴")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("SonyLIV Matches"))}`,
-    `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("Sony TV Channels"))}`,
-    `${tgEmoji("star", "⭐")} └ <code>/star</code> — ${esc(toSmallCaps("Star Sports Channels"))}`,
+    `${tgEmoji("speaker", "♦️")} <b>${esc(toSmallCaps("HOW TO USE"))}</b>`,
+    `${tgEmoji("sony", "📺")} ├ <code>/channel name</code> — ${esc(toSmallCaps("Ex: /bein, /fubo, /star sports 1 hindi hd"))}`,
+    `${tgEmoji("cricket", "🏏")} ├ <code>/team or event</code> — ${esc(toSmallCaps("Ex: /india, /ipl, /premier league"))}`,
+    `${tgEmoji("willow", "🌐")} ├ <code>/willow</code> — ${esc(toSmallCaps("All Willow Cricket Matches"))}`,
+    `${tgEmoji("fancode", "🔴")} ├ <code>/sonyliv</code> — ${esc(toSmallCaps("All SonyLIV Live & Upcoming Matches"))}`,
+    `${tgEmoji("sony", "📺")} ├ <code>/sony</code> — ${esc(toSmallCaps("All Sony Network TV Channels"))}`,
+    `${tgEmoji("star", "⭐")} └ <code>/star</code> — ${esc(toSmallCaps("All Star Sports TV Channels"))}`,
   ].join("\n");
 }
 
@@ -1361,7 +1361,7 @@ export default async function handler(req, res) {
         [
           `${tgEmoji("wrong", "❌")}  <b>${esc(toSmallCaps(`NO RESULTS : ${query.toUpperCase()}`))}</b>`,
           `━━━━━━━━━━━━━━━━━━━━━━━━`,
-          `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /start"))}`,
+          `${tgEmoji("searching", "🔎")}  ${esc(toSmallCaps("TRY ANOTHER KEYWORD OR /help"))}`,
         ].join("\n\n")
       );
       return res.status(200).json({ ok: true });
